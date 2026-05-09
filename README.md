@@ -1,6 +1,6 @@
 # anchor
 
-**A multi-role agent orchestration discipline for high-stakes software builds, distilled from running a 14-week production-grade reference implementation as a 4-role multi-agent project.**
+**A multi-role agent orchestration discipline for high-stakes software builds, distilled from running a production-grade reference implementation as a 4-role multi-agent project.**
 
 The name comes from the **four-anchor pre-merge defense** — the structural backbone of this methodology. Each anchor is a discipline checkpoint; together they catch what single-pass review misses.
 
