@@ -115,16 +115,27 @@ The pipeline surfaces this and pauses. You do not proceed unilaterally.
 4. Apply Superpowers Brainstorm phase. Document it.
 5. Apply Superpowers Design phase. Document it.
 6. Write coordination/specs/Q-RNN-SPEC.md with required sections:
-   - Mechanism: all design decisions made here, none deferred
+   - Mechanism: architectural decisions (component boundaries, data shapes,
+     integration points, choices where two valid options have materially
+     different consequences). Tactical implementation detail — exact
+     import paths, locator syntax, type-cast placement, utility class
+     names, version-mismatch shims — is delegated to the Implementer.
    - Component inventory: exists / created / changed / deleted
-   - Per-file pseudocode: Implementer makes zero design decisions
-   - Acceptance criteria: "Given X, when Y, then Z" — no ambiguous language
+   - Acceptance criteria: "Given X, when Y, then Z" — no ambiguous language.
+     ACs name the verifiable outcome, not the literal code that produces it.
    - Anti-scope: explicit list of what is NOT in this round
    - Open questions: unresolvable ambiguities only; "None" if all resolved
    - P3 ten-axis verification (one sentence per axis):
        correctness | completeness | consistency | clarity | coverage
        constraints | concurrency | corner cases | cost | coupling
    - Grilling output: adversarial self-review inline in the spec
+
+   Spec depth: prescribe WHAT and WHY. Do not prescribe exact import paths,
+   locator syntax, CSS classes, or one-line code snippets. If a tactical
+   detail is genuinely load-bearing (rare), state it once with a reason;
+   otherwise the Implementer chooses the syntax. Per-file pseudocode is
+   appropriate only when the algorithm IS the architectural decision —
+   not for routine wiring.
 7. Apply Superpowers Review phase before routing.
 8. Update coordination/NEXT-ROLE.md:
    NEXT-ROLE: IMPLEMENTER
@@ -145,18 +156,44 @@ All unresolved decisions → open questions in the spec.
 2. Apply Superpowers Execute phase for every implementation unit.
 3. TDD: failing test first, then implementation, then refactor. In that order.
 
-HALT CONDITIONS — stop immediately on any of these:
-   a. Spec claim contradicts actual codebase reality
-   b. Spec leaves a decision the Architect should have made
-   c. Two valid interpretations produce different implementations
-   d. A requirement cannot be expressed as a test
+TACTICAL AUTONOMY:
+The spec prescribes WHAT and WHY. Tactical detail — import paths, locator
+syntax, type-cast placement, utility class names, layout shims, version-
+drift fixes, syntactic adjustments — is YOUR call. If a competent senior
+engineer would just fix it, fix it and explain in the commit message.
+Routine spec/reality mismatches are NOT halt conditions.
+
+Examples of tactical fixes you make inline (do NOT halt):
+   - Spec import path doesn't resolve → use the path matching project convention.
+   - Spec locator has a substring collision → use the disambiguating variant
+     (e.g., `getByLabel("X", { exact: true })`).
+   - Spec type triggers a typecheck error at the consumer → cast at consumer
+     or widen at producer, whichever is smaller.
+   - Spec layout overflows at 375px → apply standard fix (e.g., `min-w-0`
+     + `truncate` on the variable-length child).
+   - Spec API call uses a signature the installed version doesn't support
+     → use the current signature.
+   - Spec parameter is unused or wrong-shape (e.g., a useActionState `_prev`
+     in a non-useActionState context) → drop or rename.
+
+HALT CONDITIONS — stop only when an architectural decision belongs to
+the operator:
+   a. Two valid implementations differ in observable behavior, scope,
+      or system boundaries (e.g., "switch middleware runtime", "add
+      a new API surface").
+   b. Spec/reality conflict cannot be resolved without changing the
+      round's component inventory or anti-scope.
+   c. A requirement cannot be expressed as a test at all.
+   d. PRD or spec ambiguity produces different valid implementations
+      with materially different consequences.
 
 On halt:
    1. STOP. No silent workarounds.
    2. Write coordination/diagnostics/DIAGNOSTIC-RNN-[topic].md:
         Spec claim (exact quote):
         Reality:
-        Options: A | B | C with tradeoffs
+        Options: A | B | C with tradeoffs (include an "empirically verify
+        with [command]" branch where ground truth is determinable).
    3. Set STATUS: ESCALATE in NEXT-ROLE.md
    4. Append VIOLATION: halt-discipline to MEMORIAL.md
    5. Session ends here.
@@ -167,7 +204,8 @@ On clean completion:
 
 ## Implementer role boundary
 Do not review your own code. Do not change scope.
-Spec gaps → DIAGNOSTIC files, not silent choices.
+Architectural ambiguity → DIAGNOSTIC files. Tactical detail → fix inline
+with a clear commit message.
 
 # ── REVIEWER ──────────────────────────────────────────────────────────────────
 # Active when: THIS SESSION ROLE = REVIEWER
