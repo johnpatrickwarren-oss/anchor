@@ -25,9 +25,9 @@
 #                          T3 = full Anchor (Architect + Implementer + Reviewer + Memorial)
 #                          T1 = pair (Implementer + Reviewer + Memorial; Implementer
 #                               writes its own thin spec — no separate Architect)
-#                        T1 trades the cold-eye Architect spec discipline for ~half
-#                        the wall-clock and token cost. Use for small features and
-#                        well-understood territory; use T3 for novel/high-risk work.
+#                        See CLAUDE.md.template "TIER SELECTION" section for the
+#                        rubric (A1–A7 / S1–S5) on when each is appropriate.
+#                        When in doubt, pick T3.
 #   --dry-run            Print what would run without executing
 #   --no-model-routing   Use CLAUDE_DEFAULT_MODEL for all roles
 #

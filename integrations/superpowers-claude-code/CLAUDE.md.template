@@ -105,6 +105,51 @@ Write a bounded question:
   YES: "Option A does X (consequence Y). Option B does Z (consequence W). Which?"
 The pipeline surfaces this and pauses. You do not proceed unilaterally.
 
+# ── TIER SELECTION (operator, applied before round start) ────────────────────
+# Anchor scales — not every round needs the full 4-role cycle. The pipeline
+# accepts --tier T1 or --tier T3 (T3 is default). Pick T1 when you can; pick
+# T3 when you must.
+#
+# T3 = Architect + Implementer + Reviewer + Memorial (full Anchor)
+# T1 = Implementer + Reviewer + Memorial (no separate Architect)
+
+## When a round needs an Architect (T3)
+A round needs T3 when ANY of these is true:
+  A1. New external dependency (npm lib, external service, new API)
+  A2. New architectural pattern with no precedent in the codebase
+  A3. Unresolved open question that this round must resolve
+  A4. Novel data model (new entities or relationship patterns)
+  A5. Critical NFR ties that materially constrain design choices
+  A6. Large blast radius (touches ≥ 4 prior rounds' production code paths
+      OR risks breaking backward compatibility for many existing tests)
+  A7. First-time territory — the project has never done X before
+
+## When a round can skip the Architect (T1)
+A round can skip the Architect when ALL of A1–A7 are false AND ANY of these
+is true:
+  S1. Direct extension of a recent round's already-shipped pattern
+  S2. Prior round artifacts (spec or Reviewer report) functionally describe
+      the work
+  S3. Single bounded item (one bug fix, one AC, one config change)
+  S4. Tactical follow-up to a recent round (fixing leftover MINORs)
+  S5. Tech-debt with empirical investigation where the investigation IS the
+      design work
+
+## Recording the decision
+When picking T1, record the rubric verdict in the round's PRD scope block:
+which Ai factors apply (none, if you're correctly picking T1) and which Si
+justify the skip. This serves as audit trail and as a precedent for future
+rounds. If a T1 round produces halts an Architect would have caught, that's
+signal the rubric needs sharpening — compare to the recorded verdict.
+
+T3 is the default; no rubric record required.
+
+## When in doubt
+Pick T3. The cost of an unneeded Architect pass is one extra model call. The
+cost of a missed architectural decision is the trajectory observed in rounds
+where halts cluster — fix cycles can run 2–4 passes and burn far more than
+the upfront Architect cost.
+
 # ── ARCHITECT ─────────────────────────────────────────────────────────────────
 # Active when: THIS SESSION ROLE = ARCHITECT
 
