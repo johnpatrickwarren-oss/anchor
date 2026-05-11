@@ -21,6 +21,13 @@
 #   --round R01          Round identifier (default: R01)
 #   --start-at ROLE      Resume from a specific role (after resolving escalation)
 #   --prd PATH           Path to PRD (default: coordination/PRD.md)
+#   --tier T1|T3         Pipeline tier (default: T3)
+#                          T3 = full Anchor (Architect + Implementer + Reviewer + Memorial)
+#                          T1 = pair (Implementer + Reviewer + Memorial; Implementer
+#                               writes its own thin spec — no separate Architect)
+#                        T1 trades the cold-eye Architect spec discipline for ~half
+#                        the wall-clock and token cost. Use for small features and
+#                        well-understood territory; use T3 for novel/high-risk work.
 #   --dry-run            Print what would run without executing
 #   --no-model-routing   Use CLAUDE_DEFAULT_MODEL for all roles
 #
@@ -43,6 +50,7 @@ START_AT=""
 PRD_PATH="$COORD/PRD.md"
 DRY_RUN=false
 MODEL_ROUTING=true
+TIER="T3"
 
 # Model routing
 # Opus 4.7: Architect (design reasoning) and Reviewer (adversarial audit)
@@ -80,11 +88,35 @@ while [[ $# -gt 0 ]]; do
     --round)            ROUND="$2";        shift 2 ;;
     --start-at)         START_AT="$2";     shift 2 ;;
     --prd)              PRD_PATH="$2";     shift 2 ;;
+    --tier)             TIER="$2";         shift 2 ;;
     --dry-run)          DRY_RUN=true;      shift   ;;
     --no-model-routing) MODEL_ROUTING=false; shift  ;;
     *) echo "Unknown argument: $1"; exit 1 ;;
   esac
 done
+
+# ── Tier configuration ────────────────────────────────────────────────────────
+# T3 (default): full Anchor — Architect writes spec, Implementer executes,
+#               Reviewer audits cold, Memorial records.
+# T1:           no separate Architect. Implementer applies brainstorm+design
+#               inline, writes a thin spec, then executes. Reviewer + Memorial
+#               still run. Use for small features where the per-round cost of
+#               a separate Architect role outweighs its quality contribution.
+case "$TIER" in
+  T1)
+    ROLES=("IMPLEMENTER" "REVIEWER" "MEMORIAL-UPDATER")
+    TIER_DESC="T1 (pair: Implementer writes thin spec + executes; Reviewer audits)"
+    ;;
+  T3)
+    ROLES=("ARCHITECT" "IMPLEMENTER" "REVIEWER" "MEMORIAL-UPDATER")
+    TIER_DESC="T3 (full: Architect + Implementer + Reviewer + Memorial)"
+    ;;
+  *)
+    echo "Unsupported --tier value: '$TIER'. Valid: T1, T3."
+    exit 1
+    ;;
+esac
+FIRST_ROLE="${ROLES[0]}"
 
 mkdir -p "$LOG_DIR"
 PIPELINE_LOG="$LOG_DIR/pipeline-${ROUND}.log"
@@ -310,6 +342,13 @@ PROMPT
 }
 
 build_implementer_prompt() {
+  case "$TIER" in
+    T1) build_implementer_prompt_t1 ;;
+    *)  build_implementer_prompt_t3 ;;
+  esac
+}
+
+build_implementer_prompt_t3() {
   local spec_path
   spec_path=$(awk '/^  - coordination\/specs\//{print $2; exit}' \
     "$COORD/NEXT-ROLE.md" 2>/dev/null \
@@ -331,11 +370,30 @@ You are starting cold from the spec. This is intentional. It preserves your inde
 
 $SP_EXECUTE
 
-HALT CONDITIONS — stop immediately if any of these occur:
-  a. Spec claims something that contradicts the actual codebase
-  b. Spec leaves a decision the Architect should have made
-  c. Two valid interpretations of a spec item produce different implementations
-  d. A requirement cannot be expressed as a test
+TACTICAL AUTONOMY:
+The spec prescribes WHAT and WHY. Tactical detail — import paths, locator syntax,
+type-cast placement, utility class names, layout shims, version-drift fixes,
+syntactic adjustments — is YOUR call. If a competent senior engineer would just
+fix it, fix it and explain in the commit message. Routine spec/reality mismatches
+are NOT halt conditions. Examples of fixes you make inline:
+  - Spec import path doesn't resolve → use the path matching project convention.
+  - Spec locator has a substring collision → use the disambiguating variant
+    (e.g., \`getByLabel("X", { exact: true })\`).
+  - Spec type triggers a typecheck error at the consumer → cast at consumer or
+    widen at producer, whichever is smaller.
+  - Spec layout overflows at 375px → apply standard fix (e.g., \`min-w-0\` +
+    \`truncate\` on the variable-length child).
+  - Spec API signature is outdated for the installed version → use the current one.
+  - Spec parameter is unused or wrong-shape → drop or rename.
+
+HALT CONDITIONS — stop only when an architectural decision belongs to the operator:
+  a. Two valid implementations differ in observable behavior, scope, or system
+     boundaries (e.g., "switch middleware runtime", "add a new API surface").
+  b. Spec/reality conflict cannot be resolved without changing the round's
+     component inventory or anti-scope.
+  c. A requirement cannot be expressed as a test at all.
+  d. PRD or spec ambiguity produces different valid implementations with
+     materially different consequences.
 
 On halt:
   1. STOP. Do not work around the gap. Not even a temporary workaround.
@@ -345,7 +403,8 @@ On halt:
        Resolution options:
          Option A: [what it does, consequence]
          Option B: [what it does, consequence]
-         Option C: [if applicable]
+         Option C: [if applicable — include an "empirically verify with [command]"
+                    branch where ground truth is determinable]
        Do NOT resolve unilaterally.
   3. Set coordination/NEXT-ROLE.md STATUS: ESCALATE
   4. Add the diagnostic file to the Escalation items section
@@ -364,7 +423,104 @@ On clean completion (all tests pass, no halts):
 
 ROLE BOUNDARY:
 Do not review your own code. Do not change scope.
-Do not make architectural decisions. All spec gaps → DIAGNOSTIC files.
+Architectural ambiguity → DIAGNOSTIC files. Tactical detail → fix inline with
+a clear commit message.
+PROMPT
+}
+
+build_implementer_prompt_t1() {
+  cat > "$COORD/.prompt-implementer.md" << PROMPT
+You are the IMPLEMENTER for round $ROUND (T1 mode — no Architect; you author
+the spec yourself, then execute it).
+
+Read these before writing any code:
+  - $PRD_PATH  (requirements — read in full)
+  - $CROSS_MEMORIAL  (apply all "Reinforcement rules derived" entries)
+  - coordination/MEMORIAL.md  (this project's violation history)
+  - Existing source files in src/ and tests/
+
+In T1 mode you wear two hats in one session: spec author and implementer.
+Both halves operate under the same disciplines — pre-emit grilling, no scope
+creep, audit trail in coordination/. The Reviewer reads your spec PLUS the
+code; write the spec for cold-eye consumption, not as scratch.
+
+STEP 1 — Write coordination/specs/Q-${ROUND}-SPEC.md (thin: 1-2 pages)
+
+Required sections:
+  1. Goal (1 paragraph — what this round delivers from the PRD)
+  2. Mechanism (key architectural decisions, made inline; no deferral)
+  3. Acceptance criteria
+     Every AC in "Given X, when Y, then Z" form.
+     No ambiguous language ("correctly", "appropriately", "as needed" banned).
+     ACs name the verifiable outcome, not the literal code that produces it.
+  4. Anti-scope (explicit list of what is NOT in this round)
+  5. Open questions ("None — all resolved" or escalate via DIAGNOSTIC)
+
+Per-file pseudocode is NOT required in T1 — you write the code yourself, so
+prescribing it to yourself is bookkeeping without value. Tactical implementation
+detail (import paths, locator syntax, utility class names) belongs in the code,
+not the spec.
+
+$SP_BRAINSTORM
+
+$SP_DESIGN
+
+STEP 2 — Execute against your own spec
+
+$SP_EXECUTE
+
+TACTICAL AUTONOMY:
+The spec prescribes WHAT and WHY. Tactical detail — import paths, locator syntax,
+type-cast placement, utility class names, layout shims, version-drift fixes —
+is your call. Fix routine spec/reality mismatches inline with a commit-message
+note. Architectural decisions (different observable behavior, scope, or system
+boundaries) still warrant a HALT.
+
+HALT CONDITIONS — stop only when an architectural decision belongs to the operator:
+  a. Two valid implementations differ in observable behavior, scope, or system
+     boundaries (e.g., "switch middleware runtime", "add a new API surface").
+  b. PRD/spec conflict with reality cannot be resolved without changing scope or
+     anti-scope.
+  c. A requirement cannot be expressed as a test at all.
+  d. PRD ambiguity produces different valid implementations with materially
+     different consequences.
+
+On halt:
+  1. STOP. No silent workarounds.
+  2. Write coordination/diagnostics/DIAGNOSTIC-${ROUND}-[short-topic].md:
+       PRD/spec claim (exact quote):
+       Reality (what the codebase/system actually shows):
+       Resolution options:
+         Option A: [what it does, consequence]
+         Option B: [what it does, consequence]
+         Option C: [if applicable — include an "empirically verify with [command]"
+                    branch where ground truth is determinable]
+       Do NOT resolve unilaterally.
+  3. Set coordination/NEXT-ROLE.md STATUS: ESCALATE
+  4. Add the diagnostic file to the Escalation items section
+  5. Append VIOLATION: halt-discipline | [description] | $ROUND | IMPLEMENTER
+     to coordination/MEMORIAL.md
+  6. Session ends here.
+
+STEP 3 — Pre-emit review of your own work
+
+$SP_REVIEW
+
+On clean completion (all tests pass, no halts):
+  Update coordination/NEXT-ROLE.md:
+    NEXT-ROLE: REVIEWER
+    STATUS: READY
+    Inputs: coordination/specs/Q-${ROUND}-SPEC.md, [test result summary]
+
+  Append to coordination/MEMORIAL.md:
+    CONFIRMATION entries for disciplines applied (spec authorship counts as
+    Architect-equivalent work this round).
+
+ROLE BOUNDARY:
+You author the spec AND implement it in T1 — but the Reviewer remains
+adversarial and independent. Write a spec the Reviewer can verify cold:
+verifiable ACs, explicit anti-scope, no hidden assumptions. Tactical choices
+made during implementation get documented in commit messages, not the spec.
 PROMPT
 }
 
@@ -614,7 +770,7 @@ run_role() {
 }
 
 # ── Role sequence control ─────────────────────────────────────────────────────
-ROLES=("ARCHITECT" "IMPLEMENTER" "REVIEWER" "MEMORIAL-UPDATER")
+# ROLES is set at script-top tier configuration (T1 or T3).
 
 should_run() {
   local role="$1"
@@ -701,7 +857,7 @@ EOF
   if ! grep -q "CURRENT-ROUND: $ROUND" "$COORD/NEXT-ROLE.md" 2>/dev/null; then
     cat > "$COORD/NEXT-ROLE.md" << EOF
 CURRENT-ROUND: $ROUND
-NEXT-ROLE: ARCHITECT
+NEXT-ROLE: $FIRST_ROLE
 STATUS: READY
 
 ## Inputs for next role
@@ -713,7 +869,7 @@ STATUS: READY
 ## Routing notes
 (none)
 EOF
-    log "Initialized NEXT-ROLE.md for round $ROUND"
+    log "Initialized NEXT-ROLE.md for round $ROUND ($TIER)"
   fi
 
   # Warn on prior BLOCKED state — don't silently overwrite
@@ -728,8 +884,9 @@ EOF
   log ""
   log "Project:    $PROJECT_ROOT"
   log "Round:      $ROUND"
+  log "Tier:       $TIER_DESC"
   log "PRD:        $PRD_PATH"
-  log "Start at:   ${START_AT:-ARCHITECT (full round)}"
+  log "Start at:   ${START_AT:-$FIRST_ROLE (full round)}"
   if $MODEL_ROUTING && $MODEL_FLAG_SUPPORTED; then
     log "Routing:    Architect=$MODEL_ARCHITECT  Reviewer=$MODEL_REVIEWER"
     log "            Implementer=$MODEL_IMPLEMENTER  Memorial=$MODEL_MEMORIAL"
