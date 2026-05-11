@@ -149,11 +149,29 @@ cd my-project-name
 open coordination/PRD.md          # write your requirements
 
 # Run
-./run-pipeline.sh --round R01
+./run-pipeline.sh --round R01                     # default T3 (full Anchor: 4 roles)
+./run-pipeline.sh --round R01 --tier T1           # T1: Implementer writes its own spec
 ./run-pipeline.sh --round R01 --dry-run           # preview without executing
 ./run-pipeline.sh --round R01 --auto-push         # push to GitHub on completion
 ./run-pipeline.sh --round R01 --no-model-routing  # use one model for all roles
 ```
+
+### Tier selection
+
+The pipeline scales the role count to match the round's complexity.
+
+| Tier  | Roles                                                    | Use when |
+|-------|----------------------------------------------------------|----------|
+| **T3** (default) | Architect → Implementer → Reviewer → Memorial | Novel territory, high-risk work, anything where the audit trail matters or the Architect's spec discipline is load-bearing. |
+| **T1**           | Implementer (writes thin spec inline) → Reviewer → Memorial | Small features, well-understood territory, refactors. The Implementer applies brainstorm + design phases inline, writes a 1-2 page spec, then executes. Trades the cold-eye Architect for ~half the wall-clock and token cost. |
+
+In T1 mode the Implementer is the spec author. The cold-eye Reviewer still
+runs adversarially — the safety net is preserved. The MEMORIAL.md reinforcement
+loop also still operates, so cross-round learning compounds regardless of tier.
+
+Pick T3 by default for unfamiliar territory; drop to T1 when a round is
+clearly mechanical wiring or routine extension. The choice is per-round —
+nothing stops you from running R05 as T1 and R06 as T3 if the scope shifts.
 
 ---
 
