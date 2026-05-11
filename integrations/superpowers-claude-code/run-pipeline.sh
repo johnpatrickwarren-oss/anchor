@@ -132,6 +132,53 @@ log_section() {
 log_warn()    { log "WARN:  $*"; }
 log_error()   { log "ERROR: $*"; }
 
+# ── Round lockfile ────────────────────────────────────────────────────────────
+# Prevents two pipeline instances from running concurrently on the same round.
+# Two parallel pipelines writing to the same coordination/ files race each other
+# (observed in R10: two REVIEWERs both wrote NEXT-ROLE.md; the second won).
+# Lockfile is per-round, so different rounds can still run in parallel.
+LOCKFILE=""
+LOCK_HELD=false
+
+cleanup_lock() {
+  # Only remove the lockfile if we acquired it (don't delete someone else's).
+  if $LOCK_HELD && [[ -n "$LOCKFILE" && -f "$LOCKFILE" ]]; then
+    rm -f "$LOCKFILE"
+  fi
+}
+trap cleanup_lock EXIT
+
+acquire_round_lock() {
+  LOCKFILE="$COORD/.pipeline-${ROUND}.lock"
+  if [[ -f "$LOCKFILE" ]]; then
+    local lock_pid
+    lock_pid=$(awk -F': ' '/^PID:/ {print $2; exit}' "$LOCKFILE" 2>/dev/null)
+    if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+      log_error "Another pipeline is already running for round $ROUND."
+      log_error "  Lockfile: $LOCKFILE"
+      log_error "  Live PID: $lock_pid"
+      log_error ""
+      log_error "Wait for that pipeline to finish, or kill the process before retrying."
+      log_error "If you are certain the lockfile is stale (process died without cleanup),"
+      log_error "remove it manually: rm \"$LOCKFILE\""
+      exit 2
+    else
+      log_warn "Stale lockfile at $LOCKFILE (PID $lock_pid not alive); removing."
+      rm -f "$LOCKFILE"
+    fi
+  fi
+
+  cat > "$LOCKFILE" <<EOF
+PID: $$
+STARTED: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+HOSTNAME: $(hostname -s 2>/dev/null || hostname)
+ROUND: $ROUND
+START_AT: ${START_AT:-$FIRST_ROLE}
+TIER: $TIER
+EOF
+  LOCK_HELD=true
+}
+
 # ── Flag detection ────────────────────────────────────────────────────────────
 detect_claude_flags() {
   log "Detecting Claude Code flag support..."
@@ -805,6 +852,9 @@ run_preflight() {
     log_error "Run: cp \$(dirname \$0)/CLAUDE.md.template CLAUDE.md and fill in project name."
     exit 1
   }
+
+  # Refuse to start if another pipeline is running this round.
+  acquire_round_lock
 
   detect_claude_flags
 
