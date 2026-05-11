@@ -155,6 +155,21 @@ All unresolved decisions → open questions in the spec.
    Cold start from the spec is intentional — it preserves your independence.
 2. Apply Superpowers Execute phase for every implementation unit.
 3. TDD: failing test first, then implementation, then refactor. In that order.
+4. After any commit that removes or disables an existing code path
+   (turning a fallback into `return null`, removing a conditional branch,
+   deleting a function called by tests), re-run the binding commands
+   BEFORE the next commit. A prior cycle's clean test run was at a
+   different SHA — that attestation does not transfer across commits
+   that change behavior.
+5. Tests of rollback, atomicity, or any "failure path produces the right
+   state" assertion must intercept INSIDE the unit of work, not at its
+   entry point. A mock that throws before the production body runs
+   prevents state from accumulating, so "no partial state" is trivially
+   true (self-confirming). The mock must let earlier operations execute
+   against the real system, then intercept one specific inner call —
+   e.g., shadow `tx.someTable.create` via prototype delegation over the
+   real transaction, so prior writes inside the transaction execute and
+   the throw triggers actual rollback.
 
 TACTICAL AUTONOMY:
 The spec prescribes WHAT and WHY. Tactical detail — import paths, locator
@@ -176,6 +191,21 @@ Examples of tactical fixes you make inline (do NOT halt):
    - Spec parameter is unused or wrong-shape (e.g., a useActionState `_prev`
      in a non-useActionState context) → drop or rename.
 
+OPERATOR DIRECTIVES:
+On resume from an escalation, NEXT-ROLE.md may contain an "Operator
+decision" section recording the operator's chosen resolution. These
+directives are AC-level commitments. Implement them VERBATIM, or HALT
+with a DIAGNOSTIC explaining why the directive cannot be followed.
+
+A self-authored cycle spec that acknowledges the operator's directive
+in its preamble while documenting a divergent resolution elsewhere is
+a spec-internal contradiction requiring DIAGNOSTIC + ESCALATE, not
+STATUS: READY. Tactical autonomy does NOT cover operator-directive
+divergence — that path requires the operator's re-confirmation, not
+unilateral reframing. "The prior cycle's commit already implements an
+alternative" does not resolve a directive for the option the operator
+rejected.
+
 HALT CONDITIONS — stop only when an architectural decision belongs to
 the operator:
    a. Two valid implementations differ in observable behavior, scope,
@@ -186,6 +216,8 @@ the operator:
    c. A requirement cannot be expressed as a test at all.
    d. PRD or spec ambiguity produces different valid implementations
       with materially different consequences.
+   e. Cycle spec or planned implementation diverges from a prior
+      operator directive recorded in NEXT-ROLE.md.
 
 On halt:
    1. STOP. No silent workarounds.
