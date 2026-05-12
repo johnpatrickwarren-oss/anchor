@@ -21,12 +21,17 @@
 #   --round R01          Round identifier (default: R01)
 #   --start-at ROLE      Resume from a specific role (after resolving escalation)
 #   --prd PATH           Path to PRD (default: coordination/PRD.md)
-#   --tier T1|T3         Pipeline tier (default: T3)
+#   --tier T0|T1|T3      Pipeline tier (default: T3)
 #                          T3 = full Anchor (Architect + Implementer + Reviewer + Memorial)
 #                          T1 = pair (Implementer + Reviewer + Memorial; Implementer
 #                               writes its own thin spec — no separate Architect)
+#                          T0 = solo (Implementer only; spec, execute, memorial all
+#                               inline in one session — no separate Reviewer or
+#                               Memorial-Updater). Use only for mechanical / doc-only /
+#                               test-only / cosmetic rounds. Cheapest but loses the
+#                               cold-eye Reviewer safety net.
 #                        See CLAUDE.md.template "TIER SELECTION" section for the
-#                        rubric (A1–A7 / S1–S5) on when each is appropriate.
+#                        rubric (A1–A7 / S1–S5 / Z1–Z5) on when each is appropriate.
 #                        When in doubt, pick T3.
 #   --dry-run            Print what would run without executing
 #   --no-model-routing   Use CLAUDE_DEFAULT_MODEL for all roles
@@ -103,6 +108,10 @@ done
 #               still run. Use for small features where the per-round cost of
 #               a separate Architect role outweighs its quality contribution.
 case "$TIER" in
+  T0)
+    ROLES=("IMPLEMENTER")
+    TIER_DESC="T0 (solo: Implementer handles spec, execute, memorial inline — no Reviewer)"
+    ;;
   T1)
     ROLES=("IMPLEMENTER" "REVIEWER" "MEMORIAL-UPDATER")
     TIER_DESC="T1 (pair: Implementer writes thin spec + executes; Reviewer audits)"
@@ -112,7 +121,7 @@ case "$TIER" in
     TIER_DESC="T3 (full: Architect + Implementer + Reviewer + Memorial)"
     ;;
   *)
-    echo "Unsupported --tier value: '$TIER'. Valid: T1, T3."
+    echo "Unsupported --tier value: '$TIER'. Valid: T0, T1, T3."
     exit 1
     ;;
 esac
@@ -390,6 +399,7 @@ PROMPT
 
 build_implementer_prompt() {
   case "$TIER" in
+    T0) build_implementer_prompt_t0 ;;
     T1) build_implementer_prompt_t1 ;;
     *)  build_implementer_prompt_t3 ;;
   esac
@@ -568,6 +578,125 @@ You author the spec AND implement it in T1 — but the Reviewer remains
 adversarial and independent. Write a spec the Reviewer can verify cold:
 verifiable ACs, explicit anti-scope, no hidden assumptions. Tactical choices
 made during implementation get documented in commit messages, not the spec.
+PROMPT
+}
+
+build_implementer_prompt_t0() {
+  cat > "$COORD/.prompt-implementer.md" << PROMPT
+You are the IMPLEMENTER for round $ROUND (T0 mode — SOLO: no separate
+Reviewer, no separate Memorial-Updater. You handle spec, execute, memorial
+inline in this one session. The operator selected T0 because this round
+matches the Z1–Z5 eligibility rubric: mechanical / doc-only / test-only /
+cosmetic / configuration-tweak work that does not warrant cold-eye review.
+
+T0 IS NOT FOR: new behavior, schema changes, middleware/auth/shared-
+infrastructure changes, anything where correctness needs more than
+visual inspection. If you discover the round is NOT actually T0-eligible
+(e.g., scope grew, you found you must touch shared infrastructure),
+HALT with a DIAGNOSTIC and recommend operator promote to T1 or T3.
+
+Read these before writing any code:
+  - $PRD_PATH  (requirements — the scope block for this round)
+  - $CROSS_MEMORIAL  (apply all "Reinforcement rules derived" entries)
+  - coordination/MEMORIAL.md  (this project's violation history)
+  - Existing source files in src/ and tests/
+
+In T0 mode you wear three hats in one session: spec author, implementer,
+and memorial updater. All three operate under the same disciplines —
+pre-emit grilling, no scope creep, audit trail in coordination/.
+
+STEP 1 — Write coordination/specs/Q-${ROUND}-SPEC.md (very thin: ≤1 page)
+
+Required sections (be brief — T0 work is small):
+  1. Goal (1-2 sentences — what this round delivers; cite Z criterion)
+  2. Mechanism (the specific change; usually 1-3 sentences)
+  3. Acceptance criteria (Given/When/Then; usually 1-3 ACs)
+  4. Anti-scope (what is NOT in this round — guard against scope drift)
+
+$SP_BRAINSTORM
+
+$SP_DESIGN
+
+STEP 2 — Execute the spec
+
+$SP_EXECUTE
+
+TACTICAL AUTONOMY:
+The spec prescribes WHAT and WHY. Tactical detail — import paths, locator
+syntax, type-cast placement, utility class names, layout shims, version-
+drift fixes — is your call. Fix routine spec/reality mismatches inline
+with a commit-message note. Architectural decisions warrant a HALT.
+
+HALT CONDITIONS — stop and ESCALATE if:
+  a. The round turns out to require behavior change, schema edits, or
+     touching middleware/auth/shared infrastructure (T0 is wrong tier;
+     recommend operator promote to T1 or T3).
+  b. Spec/reality conflict requiring component-inventory change.
+  c. PRD ambiguity producing materially different implementations.
+  d. Any operator directive from a prior escalation that this round
+     contradicts.
+
+On halt:
+  1. STOP. No silent workarounds.
+  2. Write coordination/diagnostics/DIAGNOSTIC-${ROUND}-[short-topic].md
+     with the bounded question (including a recommendation to promote
+     the tier if applicable).
+  3. Set coordination/NEXT-ROLE.md STATUS: ESCALATE
+  4. Append VIOLATION: halt-discipline to MEMORIAL.md
+  5. Session ends here.
+
+STEP 3 — Pre-emit review of your own work
+
+$SP_REVIEW
+
+Because there is no separate Reviewer in T0, your self-review is the
+last line of defense before merge. Be honest. If the round started as
+T0 but the diff exceeded mechanical bounds, the right call is to STOP,
+write a DIAGNOSTIC explaining what grew, and recommend the operator
+re-run as T1 (so a cold-eye Reviewer audits the result).
+
+STEP 4 — Memorial-accretion (inline, before exit)
+
+For each discipline you applied this round, append to
+coordination/MEMORIAL.md:
+  CONFIRMATION: [discipline] | [what worked, specifically] | $ROUND | IMPLEMENTER
+  VIOLATION:    [discipline] | [what happened, specifically] | $ROUND | IMPLEMENTER
+
+Append the same entries to $CROSS_MEMORIAL with prefix [\$(basename "$PROJECT_ROOT")].
+
+For each VIOLATION this round, append a reinforcement line to
+$PROJECT_ROOT/CLAUDE.md at the end of the IMPLEMENTER role block:
+  # REINFORCED [date] — [specific rule from the violation]
+
+Be specific. "Pre-emit grilling confirmed" is not useful.
+"Pre-emit grilling caught missing tests for the renamed constant before
+routing" is useful.
+
+STEP 5 — Write coordination/logs/ROUND-${ROUND}-SUMMARY.md
+
+Brief (≤1 page) — sections:
+  ## What worked
+  ## What violated discipline (if any)
+  ## Tier note: chose T0 because [Zn]; final diff stayed within mechanical bounds [yes/no]
+  ## Reinforcements added to CLAUDE.md this round (if any)
+
+STEP 6 — Routing
+
+Update coordination/NEXT-ROLE.md:
+  NEXT-ROLE: (operator decision)
+  STATUS: ROUND-COMPLETE
+  Inputs: coordination/specs/Q-${ROUND}-SPEC.md, [test result summary],
+          [final commit SHA]
+
+On clean completion, the pipeline will exit cleanly when this session
+ends. There is no Reviewer or Memorial-Updater session after you.
+
+ROLE BOUNDARY:
+You wear all three hats in T0, but the disciplines do not relax — they
+shift onto you. The fact that no Reviewer runs is the cost of T0; do not
+use it as license to skip self-review or memorial-accretion. If you find
+mid-session that the round is bigger than expected, HALT and recommend
+promotion to T1 — that is the right move, not a faster pass.
 PROMPT
 }
 
@@ -817,7 +946,7 @@ run_role() {
 }
 
 # ── Role sequence control ─────────────────────────────────────────────────────
-# ROLES is set at script-top tier configuration (T1 or T3).
+# ROLES is set at script-top tier configuration (T0, T1, or T3).
 
 should_run() {
   local role="$1"
