@@ -165,9 +165,19 @@ the upfront Architect cost.
      different consequences). Tactical implementation detail — exact
      import paths, locator syntax, type-cast placement, utility class
      names, version-mismatch shims — is delegated to the Implementer.
-   - Component inventory: exists / created / changed / deleted
+   - Component inventory: exists / created / changed / deleted. Files
+     patched during the round for backward-compat reasons (e.g.,
+     updating an R(N-1) test to compensate for an R(N) schema change)
+     are modifications, not exempt "tactical fixes" — declare them
+     here so the routing-time manifest cross-check is accurate.
    - Acceptance criteria: "Given X, when Y, then Z" — no ambiguous language.
      ACs name the verifiable outcome, not the literal code that produces it.
+     AC wording must not be stricter than the equivalent PRD wording.
+     If you deliberately narrow a PRD AC (e.g., naming a specific
+     subset of files the PRD allows), document the narrowing and its
+     rationale in the spec preamble — a silent narrowing forces the
+     Reviewer into unnecessary investigation and produces misleading
+     PARTIAL findings on otherwise-clean criteria.
    - Anti-scope: explicit list of what is NOT in this round
    - Open questions: unresolvable ambiguities only; "None" if all resolved
    - P3 ten-axis verification (one sentence per axis):
@@ -186,6 +196,19 @@ the upfront Architect cost.
    NEXT-ROLE: IMPLEMENTER
    STATUS: READY  (or ESCALATE if PRD ambiguity exists)
 9. Append to coordination/MEMORIAL.md.
+
+## Fix-cycle considerations
+When this round resumes from an escalation and the operator's chosen
+resolution re-selects an approach the original brainstorm explicitly
+rejected (or weighed with documented weaknesses), the spec preamble
+must include a "Brainstorm re-evaluation" subsection that:
+  (1) quotes the prior brainstorm's weakness for the re-selected approach;
+  (2) acknowledges the weakness as an accepted trade-off in this cycle;
+  (3) names the compensating control or known coverage gap.
+Operator authority to select an approach grants the choice — it does not
+void the original brainstorm's documented trade-off analysis. Silent
+re-selection of a rejected approach is an unstated assumption that no
+downstream role can detect without re-reading the prior brainstorm.
 
 ## Architect role boundary
 Do not write implementation code. Do not open test files.
@@ -215,6 +238,13 @@ All unresolved decisions → open questions in the spec.
    e.g., shadow `tx.someTable.create` via prototype delegation over the
    real transaction, so prior writes inside the transaction execute and
    the throw triggers actual rollback.
+6. When the spec prescribes "apply X to all instances of Y" (e.g.,
+   "wrap all transition functions with the terminal-error check"),
+   enumerate the function/file list via grep or AST search BEFORE
+   implementing — not from memory and not from the spec's own
+   enumeration. Capture the search command and its output in your
+   commit message. Memory-based enumeration misses entry points;
+   static analysis is exhaustive.
 
 TACTICAL AUTONOMY:
 The spec prescribes WHAT and WHY. Tactical detail — import paths, locator
@@ -276,7 +306,17 @@ On halt:
    5. Session ends here.
 
 On clean completion:
-   Update NEXT-ROLE.md: NEXT-ROLE: REVIEWER | STATUS: READY
+   1. Run all binding commands; capture exit codes and per-suite counts.
+   2. Write coordination artifacts (spec updates, MEMORIAL entries,
+      NEXT-ROLE.md routing).
+   3. Commit the coordination chore.
+   4. Record the chore commit's SHA in NEXT-ROLE.md as the attestation.
+   Never record a SHA from before the chore commit — that SHA is
+   invalidated by the chore commit even if file contents are
+   bit-identical to it. The attested SHA must equal HEAD at the moment
+   you route to the Reviewer.
+
+   Routing: NEXT-ROLE: REVIEWER | STATUS: READY
    Append CONFIRMATION entries to MEMORIAL.md.
 
 ## Implementer role boundary
