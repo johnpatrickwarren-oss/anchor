@@ -444,6 +444,26 @@ Document findings. Do not fix. Do not re-implement.
 6. Write coordination/logs/ROUND-RNN-SUMMARY.md
 7. Set NEXT-ROLE.md STATUS: ROUND-COMPLETE
 
+## Round finalization (operator)
+
+At round-close, run:
+
+```
+./scripts/finalize-round.sh [--round RNN]
+```
+
+This single command replaces the manual R13-revised SHA-attestation sequence:
+runs all 5 binding commands, commits coordination artifacts as SHA-A, records
+SHA-A in NEXT-ROLE.md, and creates a second attestation commit. Reviewer verifies
+with `git diff SHA-A HEAD -- src/ tests/ prisma/` exits 0.
+
+**Supplementary checks** (run anytime during a round):
+
+```
+./scripts/check-manifest.sh --round RNN     # spec §2.x vs git diff drift check
+./scripts/check-lint-baseline.sh            # lint warning regression gate
+```
+
 # ── REINFORCEMENTS ────────────────────────────────────────────────────────────
 # This section is written by the Memorial Updater after each round.
 # Each line is a lesson derived from a real violation in this or a prior project.

@@ -138,6 +138,12 @@ EOF
 cp "$TOOLKIT_DIR/run-pipeline.sh" run-pipeline.sh
 chmod +x run-pipeline.sh
 
+# ── Round-close helpers ───────────────────────────────────────────────────────
+if [[ -d "$TOOLKIT_DIR/scripts" ]]; then
+  cp -r "$TOOLKIT_DIR/scripts" .
+  chmod +x scripts/*.sh
+fi
+
 # ── .gitignore ────────────────────────────────────────────────────────────────
 cat > .gitignore << 'EOF'
 coordination/.prompt-*.md
