@@ -107,11 +107,16 @@ The pipeline surfaces this and pauses. You do not proceed unilaterally.
 
 # ── TIER SELECTION (operator, applied before round start) ────────────────────
 # Anchor scales — not every round needs the full 4-role cycle. The pipeline
-# accepts --tier T1 or --tier T3 (T3 is default). Pick T1 when you can; pick
-# T3 when you must.
+# accepts --tier T0, T1, or T3 (T3 is default). Pick the cheapest tier the
+# work genuinely warrants; pick T3 when in doubt.
 #
-# T3 = Architect + Implementer + Reviewer + Memorial (full Anchor)
-# T1 = Implementer + Reviewer + Memorial (no separate Architect)
+# T3 = Architect + Implementer + Reviewer + Memorial (full Anchor; ~4x baseline)
+# T1 = Implementer + Reviewer + Memorial (no separate Architect; ~3x baseline)
+# T0 = Implementer only (solo; spec, execute, memorial inline; ~1-2x baseline)
+#
+# Each tier-down is a real safety trade. T1 drops the Architect's cold-eye
+# spec discipline; T0 also drops the Reviewer's cold-eye audit. The cost
+# savings come at the cost of pre-merge bug-catching surface.
 
 ## When a round needs an Architect (T3)
 A round needs T3 when ANY of these is true:
@@ -135,20 +140,53 @@ is true:
   S5. Tech-debt with empirical investigation where the investigation IS the
       design work
 
+## When a round can also skip the Reviewer (T0)
+A round can drop to T0 (solo Implementer, no cold-eye audit) when ALL T1
+conditions hold AND the change matches at least one of these mechanical
+patterns:
+  Z1. Single-file mechanical rename, version bump, or format change
+      (no behavior change)
+  Z2. Documentation-only change (no code or test behavior change)
+  Z3. Test-only addition — adding new tests against existing production
+      code (NOT modifying existing test assertions)
+  Z4. Configuration value tweak (env var, port, timeout) where the value
+      is the only change
+  Z5. Cosmetic UI tweak (label text, color, padding) where visual review
+      can substitute for code review
+
+T0 is explicitly NOT for:
+  - Any new behavior, even small ("adds one feature flag check")
+  - Any spec gap requiring a decision
+  - Any modification of existing test assertions
+  - Anything that touches schema, middleware, auth, or other shared
+    infrastructure
+  - Anything where verifying correctness requires more than visual
+    inspection of the diff
+
+If the work turns out to exceed Z criteria mid-session (scope grew,
+discovered need to touch shared infrastructure), the Implementer HALTs
+and recommends operator re-run as T1 or T3 — not silent expansion.
+
 ## Recording the decision
-When picking T1, record the rubric verdict in the round's PRD scope block:
-which Ai factors apply (none, if you're correctly picking T1) and which Si
-justify the skip. This serves as audit trail and as a precedent for future
-rounds. If a T1 round produces halts an Architect would have caught, that's
+When picking T1 or T0, record the rubric verdict in the round's PRD scope
+block: which Ai factors apply (none, if correctly picking below T3), which
+Si justify skipping the Architect (T1+), and which Zi justify also skipping
+the Reviewer (T0). This serves as audit trail and as a precedent for future
+rounds. If a T1 round produces halts an Architect would have caught, or a
+T0 round produces post-merge bugs a Reviewer would have caught, that's
 signal the rubric needs sharpening — compare to the recorded verdict.
 
 T3 is the default; no rubric record required.
 
 ## When in doubt
-Pick T3. The cost of an unneeded Architect pass is one extra model call. The
-cost of a missed architectural decision is the trajectory observed in rounds
-where halts cluster — fix cycles can run 2–4 passes and burn far more than
-the upfront Architect cost.
+Pick T3 over T1, and T1 over T0. The cost of an unneeded Architect pass is
+one extra model call; the cost of an unneeded Reviewer pass is also one
+extra model call. The cost of a missed architectural decision or a missed
+adversarial finding is the trajectory observed when halts cluster — fix
+cycles can run 2–4 passes and burn far more than the upfront cold-eye cost.
+T0 has the highest downside risk because there is no cold-eye safety net
+at all: only use it when the diff is so mechanical that visual inspection
+catches everything.
 
 # ── ARCHITECT ─────────────────────────────────────────────────────────────────
 # Active when: THIS SESSION ROLE = ARCHITECT
