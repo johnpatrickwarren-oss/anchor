@@ -1060,6 +1060,19 @@ EOF
     log_warn "If the underlying issue isn't resolved, the session will fail again."
   fi
 
+  # Pipeline sync check (non-blocking — warns if canonical drift detected)
+  local sync_script="$PROJECT_ROOT/scripts/check-pipeline-sync.sh"
+  if [[ -x "$sync_script" ]]; then
+    local sync_exit=0
+    local sync_output
+    sync_output=$("$sync_script" 2>&1) || sync_exit=$?
+    if [[ -n "$sync_output" ]] || [[ $sync_exit -ne 0 ]]; then
+      while IFS= read -r sync_line; do
+        log_warn "sync: $sync_line"
+      done <<< "$sync_output"
+    fi
+  fi
+
   log ""
   log "Project:    $PROJECT_ROOT"
   log "Round:      $ROUND"
