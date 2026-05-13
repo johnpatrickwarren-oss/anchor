@@ -236,16 +236,19 @@ detect_claude_flags() {
 }
 
 # ── NEXT-ROLE.md helpers ──────────────────────────────────────────────────────
+# Both helpers operate on the FIRST `^STATUS:` line only. Memorial-Updater
+# sometimes preserves prior routing in audit sections that re-quote a STATUS
+# line; the canonical status is always the header at the top of the file.
 check_status() {
-  grep "^STATUS:" "$COORD/NEXT-ROLE.md" 2>/dev/null \
-    | awk '{print $2}' \
+  awk '/^STATUS:/ {print $2; exit}' "$COORD/NEXT-ROLE.md" 2>/dev/null \
     || echo "UNKNOWN"
 }
 
 set_status() {
   if [[ -f "$COORD/NEXT-ROLE.md" ]]; then
-    sed -i.bak "s/^STATUS:.*/STATUS: $1/" "$COORD/NEXT-ROLE.md"
-    rm -f "$COORD/NEXT-ROLE.md.bak"
+    awk -v new="STATUS: $1" '!done && /^STATUS:/ {print new; done=1; next} {print}' \
+      "$COORD/NEXT-ROLE.md" > "$COORD/NEXT-ROLE.md.tmp" \
+      && mv "$COORD/NEXT-ROLE.md.tmp" "$COORD/NEXT-ROLE.md"
   fi
 }
 
