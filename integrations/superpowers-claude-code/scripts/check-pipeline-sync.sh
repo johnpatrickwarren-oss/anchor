@@ -23,7 +23,7 @@ CANONICAL="${CANONICAL_DIR:-$HOME/anchor/integrations/superpowers-claude-code}"
 
 # ── Graceful absent-canonical handling ────────────────────────────────────────
 if [[ ! -d "$CANONICAL" ]]; then
-  echo "WARN: Canonical not present at ~/anchor/integrations/superpowers-claude-code/; sync check skipped."
+  echo "WARN: Canonical not present at $CANONICAL; sync check skipped."
   exit 0
 fi
 
