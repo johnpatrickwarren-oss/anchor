@@ -6,6 +6,48 @@ The name comes from the **four-anchor pre-merge defense** — the structural bac
 
 This is a methodology pack, not a framework. It is a set of explicit disciplines you (and your agents) apply at specific moments in a project — not a runtime, not a library, not a platform. It can be applied alongside [Superpowers](https://github.com/obra/superpowers), [CrewAI](https://github.com/crewaiinc/crewai), [LangGraph](https://github.com/langchain-ai/langgraph), [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), or any other agent runtime. It can also be applied with a single agent or no agents at all.
 
+## Quick start
+
+Two minutes of setup, then write a PRD and run a round. Full setup details
+in the [integration README](integrations/superpowers-claude-code/README.md).
+
+**Prerequisites:**
+- [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) — `npm install -g @anthropic-ai/claude-code` then `claude login`
+- [Superpowers](https://github.com/obra/superpowers) — `claude mcp add superpowers` (Anchor inlines Superpowers' phase disciplines, so this is recommended but not strictly required for the headless pipeline)
+- [GitHub CLI](https://cli.github.com/) — optional, for `new-project.sh` to auto-create a private repo
+
+```bash
+# 1. Clone anchor and put the pipeline scripts on your PATH (via symlinks
+#    so that `git pull` in ~/anchor auto-updates the scripts you run).
+git clone https://github.com/johnpatrickwarren-oss/anchor.git ~/anchor
+mkdir -p ~/anchor-pipeline
+ln -sf ~/anchor/integrations/superpowers-claude-code/{CLAUDE.md.template,new-project.sh,run-pipeline.sh,finalize-round.sh,anchor-update-project.sh} ~/anchor-pipeline/
+echo 'export PATH="$HOME/anchor-pipeline:$PATH"' >> ~/.zshrc && source ~/.zshrc
+
+# 2. Scaffold a new project (creates directory structure + optional private GitHub repo)
+new-project.sh my-project-name
+cd my-project-name
+
+# 3. Write your PRD — the only artifact you author by hand
+$EDITOR coordination/PRD.md
+
+# 4. Run the first round
+./run-pipeline.sh --round R01
+```
+
+The pipeline runs four roles (Architect → Implementer → Reviewer → Memorial-Updater)
+against your PRD and pauses only on genuine decisions. For smaller rounds you can
+skip layers with the tier dial:
+
+```bash
+./run-pipeline.sh --round R02 --tier T1   # skip Architect — Implementer self-specs
+./run-pipeline.sh --round R03 --tier T0   # solo Implementer for mechanical work
+```
+
+See the tier-selection rubric (decision tree + worked examples) in
+[`CLAUDE.md.template`](integrations/superpowers-claude-code/CLAUDE.md.template)
+for when each tier fits. **When in doubt, pick T3 (the default).**
+
 ## What problem this solves
 
 Single-agent code generation systems hallucinate, drift, and produce work that "passes the tests the same agent wrote" but fails in production. Multi-agent systems often add coordination overhead without proportional quality lift. Existing methodology frameworks (Superpowers, BMAD, Spec Kit) enforce phase gates and skill compliance but treat each project as starting from zero discipline.
