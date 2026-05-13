@@ -19,8 +19,16 @@ This pack adds four disciplines those frameworks do not:
 
 ## Anchor + Superpowers — how they compose
 
-Anchor and [Superpowers](https://github.com/obra/superpowers) operate at two
-different layers and are designed to compose, not compete.
+Anchor was developed independently from the worked example in
+[`case-studies/deploysignal/`](case-studies/) before its author encountered
+[Superpowers](https://github.com/obra/superpowers). The decision to compose
+the two — rather than reinvent the phase-level disciplines Superpowers
+already covers — is what produced the integration that ships in this repo.
+The methodology has been refined across the integration's reference
+implementation since.
+
+Anchor and Superpowers operate at two different layers and are designed to
+compose, not compete.
 
 | Layer | What it provides | Owned by |
 |---|---|---|
