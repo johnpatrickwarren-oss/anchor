@@ -17,6 +17,42 @@ This pack adds four disciplines those frameworks do not:
 3. **Audit-trail file discipline** — coordination as durable artifacts (one file per round, one file per disposition, one file per investigation) rather than ephemeral chat. The trail is the source of truth.
 4. **Role anchoring across multiple chat instances** — canonical session-ID-to-role mapping, anti-drift rule prohibiting "THIS session = X" self-claims in shared documents, per-chat project instructions as absolute role-identity source. Prevents the most common failure mode of multi-chat AI coordination: chats confusing or overlapping their roles. Includes a fillable template for projects to drop into their coordination folder.
 
+## Anchor + Superpowers — how they compose
+
+Anchor and [Superpowers](https://github.com/obra/superpowers) operate at two
+different layers and are designed to compose, not compete.
+
+| Layer | What it provides | Owned by |
+|---|---|---|
+| **Role-level** | Which role runs when (Architect / Implementer / Reviewer / Memorial-Updater), routing between roles via `NEXT-ROLE.md`, cross-project accumulated reinforcements in `MEMORIAL.md` and `~/.claude/CROSS-PROJECT-MEMORIAL.md`, tier dial (T0/T1/T3) to scale role count to round complexity | **Anchor** |
+| **Phase-level** | What each role does inside its session — brainstorm (3 approaches with tradeoffs), design (component sketch), execute (TDD red-green-refactor), review (re-read as next role, mark assumptions) | **Superpowers** |
+
+In Mode 2 (the automated pipeline), each role's prompt embeds the
+Superpowers phase disciplines as inlined prose, so they fire reliably even
+in headless `claude -p` sessions where the Superpowers MCP plugin may not
+load. Interactive sessions get both the MCP slash commands (`/brainstorm`,
+`/execute-plan`, etc.) AND the inlined prose — they compose without conflict.
+
+**Mental model:** Superpowers tells the agent *how to think within a role*.
+Anchor decides *which roles run* and *what gets remembered between rounds*.
+
+Two of Anchor's load-bearing contributions are not in Superpowers:
+
+- **The compounding-learning loop.** Superpowers is stateless per session;
+  Anchor's `MEMORIAL.md` and `CROSS-PROJECT-MEMORIAL.md` accumulate
+  failure-driven reinforcements across rounds and projects. Each violation
+  becomes a `REINFORCED` line that future role-sessions read at start-time.
+- **The cold-eye Reviewer.** Superpowers has a self-review phase, but
+  Anchor's Reviewer is a separate cold-context session that audits the
+  Implementer's output adversarially. In practice this has caught real
+  CRITICALs that the Implementer's own self-review missed.
+
+For the Mode 2 integration that wires these together — pipeline orchestrator,
+role prompts, helper scripts — see
+[`integrations/superpowers-claude-code/`](integrations/superpowers-claude-code/).
+
+---
+
 ## Usage modes
 
 Anchor is a methodology, not a runtime. It can be applied in two distinct modes depending on your context, team size, and how much pipeline visibility you want.
