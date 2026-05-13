@@ -107,6 +107,9 @@ if [[ -z "$STAGED_CHANGES" && -z "$UNSTAGED_CHANGES" ]] && \
   echo "SHA-A will be current HEAD."
   SHA_A=$(git rev-parse HEAD)
 else
+  # Stage tracked-file modifications anywhere in the working tree (e.g., run-pipeline.sh,
+  # scripts/*); -u touches only already-tracked files, not new untracked ones.
+  git add -u
   git add coordination/ CLAUDE.md
   # Check again after staging
   if git diff --cached --quiet; then
