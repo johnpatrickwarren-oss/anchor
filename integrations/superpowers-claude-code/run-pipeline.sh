@@ -96,6 +96,27 @@ while [[ $# -gt 0 ]]; do
     --tier)             TIER="$2";         shift 2 ;;
     --dry-run)          DRY_RUN=true;      shift   ;;
     --no-model-routing) MODEL_ROUTING=false; shift  ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: ./run-pipeline.sh [options]
+
+Options:
+  --round R01          Round identifier (default: R01)
+  --start-at ROLE      Resume from a specific role (after resolving escalation)
+  --prd PATH           Path to PRD (default: coordination/PRD.md)
+  --tier T0|T1|T3      Pipeline tier (default: T3)
+                         T3 = full Anchor (Architect + Implementer + Reviewer + Memorial)
+                         T1 = pair (Implementer + Reviewer + Memorial; no Architect)
+                         T0 = solo (Implementer only — mechanical/doc-only rounds)
+  --dry-run            Print what would run without executing
+  --no-model-routing   Use CLAUDE_DEFAULT_MODEL for all roles
+
+Exit codes:
+  0 = success (MERGE-READY or ROUND-COMPLETE)
+  1 = error (check logs)
+  2 = escalation (human decision needed — see coordination/NEXT-ROLE.md)
+EOF
+      exit 0 ;;
     *) echo "Unknown argument: $1"; exit 1 ;;
   esac
 done
@@ -177,6 +198,24 @@ acquire_round_lock() {
     fi
   fi
 
+  # Compute effective roles — the roles that will actually run, given START_AT filtering.
+  # Mirrors the should_run() logic inline so it is available before that function is defined.
+  local -a effective_roles=()
+  if [[ -z "$START_AT" ]]; then
+    effective_roles=("${ROLES[@]}")
+  else
+    local _past=0 _r
+    for _r in "${ROLES[@]}"; do
+      [[ "$_r" == "$START_AT" ]] && _past=1
+      [[ $_past -eq 1 ]] && effective_roles+=("$_r")
+    done
+  fi
+  local _effective_tier="" _er
+  for _er in "${effective_roles[@]}"; do
+    [[ -n "$_effective_tier" ]] && _effective_tier+=" → "
+    _effective_tier+="$_er"
+  done
+
   cat > "$LOCKFILE" <<EOF
 PID: $$
 STARTED: $(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -184,6 +223,7 @@ HOSTNAME: $(hostname -s 2>/dev/null || hostname)
 ROUND: $ROUND
 START_AT: ${START_AT:-$FIRST_ROLE}
 TIER: $TIER
+EFFECTIVE_TIER: $_effective_tier
 EOF
   LOCK_HELD=true
 }
