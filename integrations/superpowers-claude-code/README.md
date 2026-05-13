@@ -86,11 +86,23 @@ while reducing total pipeline cost significantly.
 
 ```
 integrations/superpowers-claude-code/
-├── README.md              # This file
-├── run-pipeline.sh        # Pipeline orchestrator
-├── new-project.sh         # Project scaffolding script
-└── CLAUDE.md.template     # Role definitions and inlined Superpowers disciplines
+├── README.md                    # This file
+├── run-pipeline.sh              # Pipeline orchestrator
+├── new-project.sh               # Project scaffolding script
+├── CLAUDE.md.template           # Role definitions and inlined Superpowers disciplines
+├── finalize-round.sh            # One-command round-close (SHA-A attestation)
+└── anchor-update-project.sh     # Sync project's run-pipeline.sh from canonical
 ```
+
+`finalize-round.sh` mechanically realizes the IMPLEMENTER's "On clean
+completion" sequence from `CLAUDE.md.template`: runs the binding commands,
+commits coordination artifacts as SHA-A, records that SHA in `NEXT-ROLE.md`,
+commits the recording as HEAD, and verifies the source domain hasn't changed
+between SHA-A and HEAD. Defaults to a Node.js test stack (npm typecheck /
+lint / test / test:integration / test:e2e against `src/ tests/ prisma/`);
+override via `ANCHOR_BINDING_COMMANDS` and `ANCHOR_SOURCE_DIRS` env vars for
+other stacks. Copy into your project's `scripts/` directory and invoke from
+the Implementer session (T0/T1) or from a fix-cycle commit chain.
 
 When a project is scaffolded with `new-project.sh`, it produces:
 
