@@ -94,6 +94,9 @@ fi
 echo "Working tree clean for src/, tests/, prisma/."
 echo ""
 
+# Remove pipeline lock before staging so SHA-A captures the deletion; EXIT trap in run-pipeline.sh becomes a no-op on success.
+rm -f "$COORD/.pipeline-$ROUND.lock"
+
 # ── Step c/d: Commit coordination artifacts → SHA-A ──────────────────────────
 echo "--- Step 3/6: Committing coordination artifacts ---"
 
