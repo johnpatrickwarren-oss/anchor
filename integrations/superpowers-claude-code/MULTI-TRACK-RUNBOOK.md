@@ -38,9 +38,16 @@ unlock multi-track today without rewriting `run-pipeline.sh`.
 - Operator can open **N concurrent Claude Code sessions** where N is
   the number of clusters in the wave (default cap: 5; configurable via
   the `max-parallelism-per-wave` setting).
-- Each cluster's PRD scope block content has been drafted (operator
-  authors these from the WAVE-PLAN's work-unit table — same content
-  format as a normal single-pipeline round's scope block).
+- **Per-cluster PRD scope blocks** — strongly recommended to have
+  these pre-authored as Coordinator output files (one per cluster)
+  rather than drafted in each cluster's session at dispatch time. The
+  setup script accepts `--scope <PATH>` and plants the scope into the
+  cluster worktree's `coordination/PRD.md` automatically, so the
+  cluster session just runs `./run-pipeline.sh` without any
+  scope-authoring step. Authoring scope blocks is the Coordinator's
+  job per [`skills/12-coordinator-role.md`](../../skills/12-coordinator-role.md)
+  — derived mechanically from the WAVE-PLAN's Step 1 work-unit table.
+  Worked example: [`case-studies/archfolio-coordinator-dryrun/wave-1-cluster-scopes/`](../../case-studies/archfolio-coordinator-dryrun/wave-1-cluster-scopes/).
 
 ---
 
@@ -52,7 +59,7 @@ From the **main project root** (where `run-pipeline.sh` lives), run
 the setup script once per cluster in the wave:
 
 ```bash
-./scripts/multi-track-cluster-setup.sh <cluster-id> <round> <tier>
+./scripts/multi-track-cluster-setup.sh <cluster-id> <round> <tier> [--scope PATH]
 ```
 
 The `<cluster-id>` is operator's choice — typically derived from the
@@ -62,7 +69,27 @@ cluster in the wave gets a distinct round number so their artifacts
 don't collide on merge. The `<tier>` matches the work unit's tier
 classification from the WAVE-PLAN (`solo`, `audit`, or `full`).
 
-Example for ArchFolio Wave 1 (4 clusters):
+**`--scope <PATH>` (recommended):** points at the pre-authored scope
+block file for this cluster. The script plants the scope into the
+worktree's `coordination/PRD.md` (marking any existing "current round"
+as historical first) and commits it as the routing commit. The cluster
+session can launch directly into the pipeline; no scope-authoring step
+needed.
+
+**Recommended invocation** (ArchFolio Wave 1, scopes pre-authored as
+Coordinator output):
+
+```bash
+SCOPE_DIR=~/anchor/case-studies/archfolio-coordinator-dryrun/wave-1-cluster-scopes
+
+./scripts/multi-track-cluster-setup.sh wu-p2-1 R40 full  --scope $SCOPE_DIR/wu-p2-1.md
+./scripts/multi-track-cluster-setup.sh wu-p1-1 R41 audit --scope $SCOPE_DIR/wu-p1-1.md
+./scripts/multi-track-cluster-setup.sh wu-p1-2 R42 audit --scope $SCOPE_DIR/wu-p1-2.md
+./scripts/multi-track-cluster-setup.sh wu-p1-5 R43 audit --scope $SCOPE_DIR/wu-p1-5.md
+```
+
+**Fallback invocation** (no pre-authored scope; operator drafts in
+each cluster session):
 
 ```bash
 ./scripts/multi-track-cluster-setup.sh wu-p2-1 R40 full
@@ -73,10 +100,11 @@ Example for ArchFolio Wave 1 (4 clusters):
 
 Each invocation creates a worktree at
 `~/projects/<project>-clusters/<cluster-id>/` on a new branch
-`cluster/<cluster-id>-<round>`. The script prints next steps and exits
-without launching anything — the operator drives launch in Step 2.
+`cluster/<cluster-id>-<round>`. With `--scope`, also commits the
+routing change. The script prints next steps and exits without
+launching anything — the operator drives launch in Step 2.
 
-### Step 2 — Author PRD scope + launch each cluster's pipeline
+### Step 2 — Launch each cluster's pipeline
 
 For each cluster worktree:
 
@@ -85,10 +113,11 @@ For each cluster worktree:
    cd ~/projects/<project>-clusters/<cluster-id>/
    claude
    ```
-2. In that session, **author the PRD scope block** for this cluster's
-   work unit at the top of `coordination/PRD.md`. The scope content
-   matches the work unit's acceptance criteria from the WAVE-PLAN.
-   Commit it:
+2. **If you used `--scope` in Step 1, skip to step 3** — the routing
+   commit was already made. Otherwise, **author the PRD scope block**
+   for this cluster's work unit at the top of `coordination/PRD.md`
+   (the scope content matches the work unit's acceptance criteria
+   from the WAVE-PLAN). Commit it:
    ```bash
    git add coordination/PRD.md
    git commit -m "<round> routing: cluster <cluster-id> — <WU description>"
