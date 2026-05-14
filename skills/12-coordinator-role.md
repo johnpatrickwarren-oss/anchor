@@ -274,10 +274,10 @@ implementation-level ones.
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `WAVE-PLAN-NN.md` | `coordination/` | DAG + wave assignments + tier classifications; primary coordinator output |
+| `WAVE-PLAN-NN.md` | `coordination/` | DAG + wave assignments + tier classifications; primary coordinator output. Fillable scaffold: [`templates/WAVE-PLAN-TEMPLATE.md`](../templates/WAVE-PLAN-TEMPLATE.md). Version per revision (do not edit in place). |
 | `WAVE-GATE-NN.md` | `coordination/` | Wave gate checklist results + failure dispositions per wave. Fillable scaffold: [`templates/WAVE-GATE-TEMPLATE.md`](../templates/WAVE-GATE-TEMPLATE.md). Version per wave (do not edit in place). |
 | `CLUSTER-HANDOFF-NN-WU[A]-WU[B].md` | `coordination/` | Cross-cluster dependency contract for a directed edge (source WU → target WU). Fillable scaffold: [`templates/CLUSTER-HANDOFF-TEMPLATE.md`](../templates/CLUSTER-HANDOFF-TEMPLATE.md). One file per edge — do not merge multiple edges. |
-| `COORDINATOR-MEMORIAL.md` | `coordination/` | Coordinator-level failure-driven discipline accumulation |
+| `COORDINATOR-MEMORIAL.md` | `coordination/` | Coordinator-level failure-driven discipline accumulation (DAG-construction and wave-planning patterns, distinct from cluster-level `MEMORIAL.md`). Fillable scaffold: [`templates/COORDINATOR-MEMORIAL-TEMPLATE.md`](../templates/COORDINATOR-MEMORIAL-TEMPLATE.md). Append-only. |
 | `clusters/<cluster-id>/MEMORIAL-fragment.md` | `coordination/` | Per-cluster memorial fragments, aggregated by Coordinator at wave gate |
 
 ## Relationship to existing TPM role
