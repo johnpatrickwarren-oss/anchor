@@ -102,7 +102,7 @@ between SHA-A and HEAD. Defaults to a Node.js test stack (npm typecheck /
 lint / test / test:integration / test:e2e against `src/ tests/ prisma/`);
 override via `ANCHOR_BINDING_COMMANDS` and `ANCHOR_SOURCE_DIRS` env vars for
 other stacks. Copy into your project's `scripts/` directory and invoke from
-the Implementer session (T0/T1) or from a fix-cycle commit chain.
+the Implementer session (any tier) or from a fix-cycle commit chain.
 
 When a project is scaffolded with `new-project.sh`, it produces:
 
@@ -161,8 +161,9 @@ cd my-project-name
 open coordination/PRD.md          # write your requirements
 
 # Run
-./run-pipeline.sh --round R01                     # default T3 (full Anchor: 4 roles)
-./run-pipeline.sh --round R01 --tier T1           # T1: Implementer writes its own spec
+./run-pipeline.sh --round R01                     # default: full (4 roles)
+./run-pipeline.sh --round R01 --tier audit        # Implementer writes own spec, Reviewer audits
+./run-pipeline.sh --round R01 --tier solo         # Implementer only — mechanical rounds
 ./run-pipeline.sh --round R01 --dry-run           # preview without executing
 ./run-pipeline.sh --round R01 --auto-push         # push to GitHub on completion
 ./run-pipeline.sh --round R01 --no-model-routing  # use one model for all roles
@@ -170,20 +171,33 @@ open coordination/PRD.md          # write your requirements
 
 ### Tier selection
 
-The pipeline scales the role count to match the round's complexity.
+The pipeline scales the role count to match the round's complexity. See
+[`skills/11-round-scaling.md`](../../skills/11-round-scaling.md) in canonical
+anchor for the full rubric (A1–A7 / S1–S5 / Z1–Z5 criteria, decision tree,
+worked examples).
 
 | Tier  | Roles                                                    | Use when |
 |-------|----------------------------------------------------------|----------|
-| **T3** (default) | Architect → Implementer → Reviewer → Memorial | Novel territory, high-risk work, anything where the audit trail matters or the Architect's spec discipline is load-bearing. |
-| **T1**           | Implementer (writes thin spec inline) → Reviewer → Memorial | Small features, well-understood territory, refactors. The Implementer applies brainstorm + design phases inline, writes a 1-2 page spec, then executes. Trades the cold-eye Architect for ~half the wall-clock and token cost. |
+| **`full`** (default) | Architect → Implementer → Reviewer → Memorial | Novel territory, high-risk work, anything where the audit trail matters or the Architect's spec discipline is load-bearing. |
+| **`audit`**          | Implementer (writes thin spec inline) → Reviewer → Memorial | Small features, well-understood territory, refactors. The Implementer applies brainstorm + design phases inline, writes a 1-2 page spec, then executes. Trades the cold-eye Architect for ~half the wall-clock and token cost. |
+| **`solo`**           | Implementer only (spec, execute, memorial inline)            | Mechanical / doc-only / test-only / cosmetic rounds where visual diff inspection substitutes for cold-eye review. Cheapest tier; no Reviewer safety net. |
 
-In T1 mode the Implementer is the spec author. The cold-eye Reviewer still
-runs adversarially — the safety net is preserved. The MEMORIAL.md reinforcement
-loop also still operates, so cross-round learning compounds regardless of tier.
+In `audit` mode the Implementer is the spec author. The cold-eye Reviewer
+still runs adversarially — the safety net is preserved. The MEMORIAL.md
+reinforcement loop operates in all three tiers, so cross-round learning
+compounds regardless of tier.
 
-Pick T3 by default for unfamiliar territory; drop to T1 when a round is
-clearly mechanical wiring or routine extension. The choice is per-round —
-nothing stops you from running R05 as T1 and R06 as T3 if the scope shifts.
+Pick `full` by default for unfamiliar territory; drop to `audit` when a
+round is clearly mechanical wiring or routine extension; drop to `solo`
+for pure-mechanical rounds matching the Z criteria. The choice is per-round
+— nothing stops you from running R05 as `audit` and R06 as `full` if scope
+shifts.
+
+**Backward compatibility:** `--tier T0` / `--tier T1` / `--tier T3` still
+work as aliases for `solo` / `audit` / `full` respectively, but emit a
+deprecation warning. The verbal names avoid a naming collision with
+Anchor's four-anchor pre-merge defense (which uses T0/T1/T2/T3 for the
+temporally-ordered discipline checkpoints).
 
 ---
 
