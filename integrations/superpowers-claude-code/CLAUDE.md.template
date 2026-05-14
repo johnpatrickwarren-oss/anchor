@@ -154,7 +154,8 @@ to T0; absence of justification stays at T3 default.
 | Add an e2e test for a recently-shipped screen | T1 | S4 (tactical follow-up) |
 | Fix 3 leftover MINORs from a prior round's Reviewer report | T1 | S4 |
 | Add a feature-flag check (even one line of new behavior) | T1 | new behavior — fails Z; S3 applies |
-| Add 5 new unit tests against an existing function (no prod change) | T0 | Z3 |
+| Add 5 new unit tests against an existing pure function (no prod change) | T0 | Z3 |
+| Add 5 new integration tests closing a prior-round MINOR coverage gap | T1 | Z3 disqualified (gap-closure + integration-tier); S4 applies |
 | Bump Playwright timeout from 5s to 10s | T0 | Z4 |
 | Rename an internal helper function (no external callers) | T0 | Z1 |
 | Update `templates/PRD-TEMPLATE.md` docs | T0 | Z2 |
@@ -189,7 +190,21 @@ decision or a missed adversarial finding is a 2–4-cycle fix recovery.
       (no behavior change)
   Z2. Documentation-only change (no code or test behavior change)
   Z3. Test-only addition — adding new tests against existing production
-      code (NOT modifying existing test assertions)
+      code (NOT modifying existing test assertions). Z3 applies cleanly to:
+      unit tests against pure functions or well-bounded units; ≤3 simple
+      additions; tests that don't close a prior-round MINOR/MAJOR gap.
+      Z3 does NOT apply (use T1 instead) when:
+        (a) the tests are integration-tier or e2e-tier with non-trivial
+            fixtures, multiple production-call paths, or DB/external state —
+            cold-eye Reviewer is warranted for fixture-distinctiveness,
+            action-signature-drift, and self-confirming-test risk that are
+            harder for the Implementer to self-catch.
+        (b) the round closes a prior-round MINOR/MAJOR coverage gap — the
+            gap exists because someone already missed it once; the fix
+            needs adversarial review, not self-review.
+        (c) the fixtures or assertion shapes are non-obvious (e.g.,
+            require careful distinctiveness analysis or snapshot-key
+            cross-checks).
   Z4. Configuration value tweak (env var, port, timeout) where the value
       is the only change
   Z5. Cosmetic UI tweak (label text, color, padding) where visual review
