@@ -28,7 +28,7 @@ For multi-cluster parallel execution at the program level (rather than feature l
 
 ### Templates for coordination-heavy roles
 
-Each of the four coordination-heavy roles (PM, Architect, TPM, Reviewer) has a fillable scaffold under [`templates/`](./templates/). The scaffolds encode the relevant disciplines (pre-emit grilling, anti-scope, P3 axes, severity triage) structurally so the role's output captures discipline by construction rather than by memory.
+Each of the coordination-heavy roles (PM, Architect, TPM, Reviewer, and — for multi-cluster execution — Coordinator) has a fillable scaffold under [`templates/`](./templates/). The scaffolds encode the relevant disciplines (pre-emit grilling, anti-scope, P3 axes, severity triage, dependency-edge verification) structurally so the role's output captures discipline by construction rather than by memory.
 
 | Role | Template | Encodes |
 |---|---|---|
@@ -36,6 +36,7 @@ Each of the four coordination-heavy roles (PM, Architect, TPM, Reviewer) has a f
 | Architect | [`Q-NN-SPEC-TEMPLATE.md`](./templates/Q-NN-SPEC-TEMPLATE.md) | Spec / mechanism / open-Q architect picks / per-file pseudo-code / tests / acceptance / anti-scope / open Qs / P3 ten-axis verification / architect grilling output / Memorial application / timeline / pre-prediction / topic close framing / discipline-archive. |
 | TPM | [`TPM-REPLY-TEMPLATE.md`](./templates/TPM-REPLY-TEMPLATE.md) | Pre-route discipline checklist / TPM grilling output / routing scope (the actual pasteable for downstream) / sequencing context / Memorial state / open coordination items. |
 | Reviewer | [`REVIEWER-REPORT-TEMPLATE.md`](./templates/REVIEWER-REPORT-TEMPLATE.md) | Audit method / per-AC verification table / findings with severity tiers / cross-cutting verification (no-skip, audit-state currency, anti-scope preservation, right-reasons) / severity triage / disposition routing recommendations / audit-process self-check. |
+| Coordinator (multi-cluster) | [`CLUSTER-HANDOFF-TEMPLATE.md`](./templates/CLUSTER-HANDOFF-TEMPLATE.md) | Cross-cluster dependency contract: source/target work units, dependency test that fired, interface contract description (schema/API/UI/file), verification status, target-cluster anti-assume list, pre-flags from wave gate, halt conditions, Coordinator verification log, amendment history. One file per directed edge. |
 
 The Implementer role does not have a single canonical template scaffold because Implementer outputs are code, tests, and PRs — these are project-specific and should follow the project's normal code conventions. The Implementer's discipline lives in [`skills/03-four-anchor-defense.md`](./skills/03-four-anchor-defense.md) (T2 anchor), not in a template.
 

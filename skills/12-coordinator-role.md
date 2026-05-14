@@ -276,7 +276,7 @@ implementation-level ones.
 |---|---|---|
 | `WAVE-PLAN-NN.md` | `coordination/` | DAG + wave assignments + tier classifications; primary coordinator output |
 | `WAVE-GATE-NN.md` | `coordination/` | Wave gate checklist results + failure dispositions per wave |
-| `CLUSTER-HANDOFF-NN-WU.md` | `coordination/` | Cross-cluster dependency contract between specific work units |
+| `CLUSTER-HANDOFF-NN-WU[A]-WU[B].md` | `coordination/` | Cross-cluster dependency contract for a directed edge (source WU → target WU). Fillable scaffold: [`templates/CLUSTER-HANDOFF-TEMPLATE.md`](../templates/CLUSTER-HANDOFF-TEMPLATE.md). One file per edge — do not merge multiple edges. |
 | `COORDINATOR-MEMORIAL.md` | `coordination/` | Coordinator-level failure-driven discipline accumulation |
 | `clusters/<cluster-id>/MEMORIAL-fragment.md` | `coordination/` | Per-cluster memorial fragments, aggregated by Coordinator at wave gate |
 
