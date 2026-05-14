@@ -103,15 +103,31 @@ If yes: record as a contention risk, not necessarily a dependency.
 Resolve via worktree isolation unless the overlap is in a shared
 foundation file, in which case: WU-A → WU-B or serialize.
 
-**Test D5 — Migration ownership.** Does WU-A or WU-B add a file to the
-project's migration directory (default conventions: `prisma/migrations/`,
-`db/migrate/`, `migrations/`, `supabase/migrations/`; configurable per
-project)? If both do, they have a serial dependency regardless of file
-overlap — the migration history is linear by construction in every
-modern ORM. The work unit whose intended schema state is earlier lands
-first. If intended order is ambiguous from the PRD, escalate to Step 3.
-The migration lock described under Shared-resource arbitration is a
-fallback for D5 misses, not a primary discipline.
+**Test D5 — Migration write-conflict.** Does WU-A's intended migration
+write to a table, column, or constraint that WU-B's intended migration
+also writes? Two outcomes:
+
+- **D5-strict (write-conflict).** If yes — WUs touch the same schema
+  surface — record a serial dependency edge: WU-A → WU-B, where A's
+  intended schema state lands first. Escalate to Step 3 if the
+  intended order is ambiguous from the PRD. This is a HIGH-confidence
+  dependency on par with D1/D2.
+- **D5-contention (disjoint-schema).** If both WUs add migrations but
+  against entirely separate tables / columns / constraints, this is
+  NOT a strict dependency. Log it as a contention risk in the D4 file
+  tree overlap table (shared file: the migration directory, e.g.,
+  `prisma/migrations/`, `db/migrate/`, `migrations/`,
+  `supabase/migrations/`). The migration lock described under
+  Shared-resource arbitration arbitrates the seconds-long
+  migration-generation step so both clusters can dispatch in parallel.
+
+The distinction matters because migration history is linear only at
+*apply* time (filenames have a monotonic prefix, ORMs apply in name
+order). Linearity at apply does not require dispatch to be serial.
+Two independent table additions can be authored against the same base
+schema in parallel and merge in either order. Forcing them into
+separate waves to honor a non-existent constraint forfeits
+parallelism for no correctness benefit.
 
 Record every edge with: source work unit, target work unit, dependency
 test that fired, confidence (HIGH if D1/D2/D5, MEDIUM if D3/D4).
@@ -340,13 +356,35 @@ collision and without forcing tracks to wait on a stamp.
 
 ### Schema migrations
 
-The DAG D5 test catches migration ownership at planning time and places
-migration-touching work units in different waves. This handles the
-common case deterministically and at zero runtime cost.
+Migration arbitration is two-layered, matching the two outcomes of D5
+(see §Step 2 §Dependency edge identification):
 
-When D5 misses — work unit's file-tree-scope did not declare a
-migration directory touch, but the Implementer generates a migration
-anyway — a migration lock catches it at execution time:
+**Layer 1 — D5-strict: planning-time serialization.** When two work
+units write to the same table / column / constraint, D5 records a
+serial dependency edge and the Coordinator places them in different
+waves. No runtime arbitration needed; the linear migration history
+aligns naturally with the wave sequence. Zero runtime cost.
+
+**Layer 2 — D5-contention: execution-time lock.** When two work units
+both add migrations but against disjoint schema surfaces, D5 logs a
+contention risk (in the D4 file-tree-overlap table) rather than a
+dependency edge. Both clusters can dispatch in parallel. At
+migration-generation time, each cluster takes `flock(2)` on
+`<migration-dir>/.migration.lock` so the seconds-long file-creation
+step (filename timestamp, migration SQL emission) is serialized. The
+lock is held only during migration generation; both clusters proceed
+in parallel through Implementer, Reviewer, and wave gate after their
+migration file lands on disk.
+
+This two-layer design recovers parallelism for projects where many
+work units add migrations against unrelated tables (a common pattern
+in early-phase feature work). A strict "any migration touch =
+different wave" rule would over-serialize these cases — see
+`case-studies/archfolio-coordinator-dryrun/DRYRUN-OBSERVATIONS.md`
+for the empirical finding that motivated this refinement.
+
+**Lock details (both layers' fallback when a D5 miss occurs at
+execution):**
 
 - Each cluster Implementer takes `flock(2)` on
   `<migration-dir>/.migration.lock` before invoking the migration
@@ -362,6 +400,11 @@ anyway — a migration lock catches it at execution time:
 - The 10-minute default tolerates the laptop-sleep failure mode
   observed across many sequential rounds. Projects with legitimately
   slow migrations (large data backfills) override per-project.
+- A D5 classification miss (Coordinator labeled two WUs as
+  D5-contention when they actually write the same schema surface) is
+  detected at apply time — the second migration fails with a Prisma
+  error referencing the conflicting column. Treat as a wave-gate
+  CRITICAL finding; the Coordinator resequences for the next wave.
 
 **ORM portability.** D5 and the migration lock reference a
 project-configured migration-directory path with a convention fallback:
