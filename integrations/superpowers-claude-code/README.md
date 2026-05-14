@@ -87,12 +87,22 @@ while reducing total pipeline cost significantly.
 ```
 integrations/superpowers-claude-code/
 ├── README.md                    # This file
-├── run-pipeline.sh              # Pipeline orchestrator
+├── MULTI-TRACK-RUNBOOK.md       # Operator runbook for multi-cluster parallel waves
+├── run-pipeline.sh              # Pipeline orchestrator (single-track / per-cluster)
 ├── new-project.sh               # Project scaffolding script
 ├── CLAUDE.md.template           # Role definitions and inlined Superpowers disciplines
 ├── finalize-round.sh            # One-command round-close (SHA-A attestation)
-└── anchor-update-project.sh     # Sync project's run-pipeline.sh from canonical
+├── anchor-update-project.sh     # Sync project's run-pipeline.sh from canonical
+└── scripts/
+    ├── multi-track-cluster-setup.sh        # Create a worktree for one cluster in a wave
+    └── multi-track-verify-wave-merge.sh    # Post-merge correctness check after wave aggregation
 ```
+
+**Multi-track mode (parallel clusters):** see [`MULTI-TRACK-RUNBOOK.md`](./MULTI-TRACK-RUNBOOK.md)
+for the operator step-by-step. Multi-track is an MVP — the underlying
+methodology disciplines live in [`skills/12-coordinator-role.md`](../../skills/12-coordinator-role.md),
+but execution is operator-orchestrated rather than fully automated.
+Stay single-track unless a wave plan has ≥3 truly-parallel clusters.
 
 `finalize-round.sh` mechanically realizes the IMPLEMENTER's "On clean
 completion" sequence from `CLAUDE.md.template`: runs the binding commands,
