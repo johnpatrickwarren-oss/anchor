@@ -147,6 +147,9 @@ fi
 # ── .gitignore ────────────────────────────────────────────────────────────────
 cat > .gitignore << 'EOF'
 coordination/.prompt-*.md
+coordination/.pipeline-*.lock
+coordination/clusters/
+coordination/multi-track-status.json
 node_modules/
 .env
 *.bak

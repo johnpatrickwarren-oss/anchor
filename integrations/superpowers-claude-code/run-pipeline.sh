@@ -928,6 +928,49 @@ get_budget() {
   esac
 }
 
+# ── Memorial-Updater output commit (A7) ──────────────────────────────────────
+#
+# The Memorial-Updater role writes several files at clean completion but does
+# not commit them. In single-track Mode 2 the operator is present and commits
+# at round-close. In multi-track each cluster's pipeline is unattended; the
+# uncommitted outputs strand on each cluster branch and are missed at wave-
+# gate merge time. Auto-committing here closes that gap.
+#
+# What this typically commits:
+#   M  CLAUDE.md (REINFORCED appendings under role blocks)
+#   M  coordination/MEMORIAL.md (CONFIRMATION/VIOLATION entries)
+#   M  coordination/NEXT-ROLE.md (final state, ROUND-COMPLETE status)
+#   ?? coordination/logs/ROUND-RNN-SUMMARY.md (new)
+#   ?? coordination/reviews/REVIEWER-REPORT-RNN.md (if Reviewer left it
+#      uncommitted, which is the current behavior)
+#
+# Does not commit:
+#   - Stray modifications outside coordination/ + CLAUDE.md (unintentional).
+#   - .pipeline-RNN.lock changes (gitignored per A9; if a project doesn't
+#     yet have the gitignore line, the lockfile change still lands in
+#     `git add -A coordination/` but is ignorable in audit).
+commit_memorial_outputs() {
+  cd "$PROJECT_ROOT" || return 1
+
+  # Stage all coordination/ changes + any CLAUDE.md modification.
+  git add -A coordination/ CLAUDE.md 2>/dev/null || true
+
+  if git diff --cached --quiet 2>/dev/null; then
+    log "Memorial-Updater outputs: nothing to commit (already clean)."
+    return 0
+  fi
+
+  if git commit -q -m "chore($ROUND): Memorial-Updater outputs"; then
+    local sha
+    sha=$(git rev-parse --short HEAD)
+    log "Memorial-Updater outputs committed: $sha"
+  else
+    log_warn "Memorial-Updater commit failed; operator must commit manually."
+    log_warn "Outstanding files:"
+    git status --short 2>&1 | head -10 | tee -a "$PIPELINE_LOG"
+  fi
+}
+
 # ── Core runner with retry and rate limit handling ────────────────────────────
 run_role() {
   local role="$1"
@@ -984,6 +1027,9 @@ run_role() {
 
     if [[ $exit_code -eq 0 ]]; then
       log "$role completed."
+      if [[ "$role" == "MEMORIAL-UPDATER" ]]; then
+        commit_memorial_outputs
+      fi
       check_escalation
       return 0
     fi

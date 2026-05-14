@@ -1,42 +1,46 @@
 #!/bin/bash
-# multi-track-verify-wave-merge.sh — Post-merge correctness check for a wave.
+# multi-track-verify-wave-merge.sh — Wave merge correctness check.
 #
 # Usage:
-#   ./scripts/multi-track-verify-wave-merge.sh --wave N --clusters cluster-id-1,cluster-id-2,...
+#   # Pre-merge mode (cluster branches still exist):
+#   ./scripts/multi-track-verify-wave-merge.sh --wave N --clusters id1,id2,...
 #
-# Example:
-#   ./scripts/multi-track-verify-wave-merge.sh --wave 1 --clusters wu-p2-1,wu-p1-1,wu-p1-2,wu-p1-5
+#   # Post-merge mode (branches deleted after merge; recommended):
+#   ./scripts/multi-track-verify-wave-merge.sh --wave N --clusters id1,id2,... \
+#       --baseline pre-wave-N-merge
 #
-# Runs AFTER the operator has merged all cluster branches into main per the
-# MULTI-TRACK-RUNBOOK.md wave-merge procedure. Verifies:
+# The --baseline flag (added per Wave 1 finding F2) makes the diff comparison
+# work post-merge. Without it, the script uses `git diff main...<branch>`
+# which is empty after merging the branches (they're ancestors of main).
+# With --baseline, the script finds each cluster's merge commit on main and
+# compares the baseline tag against that merge commit.
 #
-#   1. Every cluster's CONFIRMATION/VIOLATION memorial lines from the wave are
-#      present in main's coordination/MEMORIAL.md (catches lines lost to
-#      conflict resolution "ours" strategy)
-#   2. Every cluster's REVIEWER-REPORT-RNN.md file is present in
-#      coordination/reviews/ on main
-#   3. Every cluster's ROUND-RNN-SUMMARY.md is present in coordination/logs/
-#   4. The CLAUDE.md reinforcement appends from each cluster are preserved on
-#      main (any 'REINFORCED YYYY-MM-DD' lines added on cluster branches
-#      should be on main)
+# Verifies:
+#   1. Every cluster's CONFIRMATION/VIOLATION memorial lines from the wave
+#      are present in main's coordination/MEMORIAL.md
+#   2. Every cluster's REVIEWER-REPORT-RNN.md is in coordination/reviews/
+#   3. Every cluster's ROUND-RNN-SUMMARY.md is in coordination/logs/
+#   4. CLAUDE.md REINFORCED appends from each cluster are preserved on main
 #
 # Exit codes:
-#   0 = all checks pass; wave merge is correct
+#   0 = all checks pass
 #   1 = at least one check failed; remediation steps printed
-#   2 = invocation error (bad args, cluster branch missing, etc.)
+#   2 = invocation error (bad args, baseline missing, etc.)
 
 set -euo pipefail
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 WAVE=""
 CLUSTERS=""
+BASELINE=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --wave)     WAVE="$2";     shift 2 ;;
     --clusters) CLUSTERS="$2"; shift 2 ;;
+    --baseline) BASELINE="$2"; shift 2 ;;
     -h|--help)
-      head -25 "$0" | sed 's/^# \?//'
+      head -27 "$0" | sed 's/^# \?//'
       exit 0
       ;;
     *) echo "Unknown argument: $1"; exit 2 ;;
@@ -63,7 +67,17 @@ fi
 
 IFS=',' read -ra CLUSTER_ARR <<< "$CLUSTERS"
 
-echo "Verifying wave $WAVE merge against ${#CLUSTER_ARR[@]} clusters: $CLUSTERS"
+if [[ -n "$BASELINE" ]]; then
+  # Validate baseline exists as a ref
+  if ! git -C "$PROJECT_ROOT" rev-parse --verify "$BASELINE" >/dev/null 2>&1; then
+    echo "ERROR: --baseline '$BASELINE' is not a valid git ref."
+    echo "       Did the cluster-setup script create the pre-wave-${WAVE}-merge tag?"
+    exit 2
+  fi
+  echo "Verifying wave $WAVE merge (post-merge mode, baseline=$BASELINE) against ${#CLUSTER_ARR[@]} clusters: $CLUSTERS"
+else
+  echo "Verifying wave $WAVE merge (pre-merge mode, branches expected) against ${#CLUSTER_ARR[@]} clusters: $CLUSTERS"
+fi
 echo ""
 
 FAILURES=0
@@ -71,22 +85,39 @@ fail() { echo "  ❌ $*"; FAILURES=$((FAILURES + 1)); }
 pass() { echo "  ✅ $*"; }
 warn() { echo "  ⚠️  $*"; }
 
-# ── Resolve each cluster's branch ─────────────────────────────────────────────
+# ── Resolve each cluster's round + diff range ─────────────────────────────────
 for cluster in "${CLUSTER_ARR[@]}"; do
-  # Find the branch matching this cluster (regardless of round suffix)
-  BRANCH=$(git -C "$PROJECT_ROOT" for-each-ref --format='%(refname:short)' "refs/heads/cluster/${cluster}-*" | head -1)
-  if [[ -z "$BRANCH" ]]; then
-    fail "cluster $cluster: no branch matching 'cluster/${cluster}-*' found"
+  if [[ -n "$BASELINE" ]]; then
+    # Post-merge mode: find the wave-merge commit that mentions this cluster id
+    MERGE_COMMIT=$(git -C "$PROJECT_ROOT" log --oneline "$BASELINE..HEAD" 2>/dev/null \
+      | grep -F "cluster $cluster" | head -1 | awk '{print $1}' || true)
+    if [[ -z "$MERGE_COMMIT" ]]; then
+      fail "cluster $cluster: no merge commit found on main mentioning 'cluster $cluster' since baseline"
+      continue
+    fi
+    # Round number is in the merge commit subject (e.g., 'R40 — Contract foundation')
+    ROUND=$(git -C "$PROJECT_ROOT" log -1 --format=%s "$MERGE_COMMIT" \
+      | grep -oE "R[0-9]+" | head -1)
+    DIFF_RANGE="$BASELINE..$MERGE_COMMIT"
+    echo "Cluster '$cluster' → merge $MERGE_COMMIT (round $ROUND)"
+  else
+    BRANCH=$(git -C "$PROJECT_ROOT" for-each-ref --format='%(refname:short)' "refs/heads/cluster/${cluster}-*" | head -1)
+    if [[ -z "$BRANCH" ]]; then
+      fail "cluster $cluster: no branch matching 'cluster/${cluster}-*' found"
+      continue
+    fi
+    ROUND=$(echo "$BRANCH" | sed -n "s|cluster/${cluster}-||p")
+    DIFF_RANGE="main...$BRANCH"
+    echo "Cluster '$cluster' → branch '$BRANCH' (round $ROUND)"
+  fi
+
+  if [[ -z "$ROUND" ]]; then
+    fail "  could not derive round identifier for cluster $cluster"
     continue
   fi
-  echo "Cluster '$cluster' → branch '$BRANCH'"
-
-  # Extract the cluster's round identifier from the branch name (e.g., R40)
-  ROUND=$(echo "$BRANCH" | sed -n "s|cluster/${cluster}-||p")
 
   # ── Check 1: MEMORIAL.md lines ─────────────────────────────────────────────
-  # Find lines added on the cluster branch that match CONFIRMATION:/VIOLATION:
-  CLUSTER_MEMORIAL_LINES=$(git -C "$PROJECT_ROOT" diff "main...$BRANCH" -- coordination/MEMORIAL.md 2>/dev/null \
+  CLUSTER_MEMORIAL_LINES=$(git -C "$PROJECT_ROOT" diff "$DIFF_RANGE" -- coordination/MEMORIAL.md 2>/dev/null \
     | grep -E "^\+(CONFIRMATION|VIOLATION):" | sed 's/^\+//' || true)
 
   if [[ -z "$CLUSTER_MEMORIAL_LINES" ]]; then
@@ -131,7 +162,7 @@ for cluster in "${CLUSTER_ARR[@]}"; do
   fi
 
   # ── Check 4: CLAUDE.md REINFORCED lines ────────────────────────────────────
-  CLUSTER_REINFORCED=$(git -C "$PROJECT_ROOT" diff "main...$BRANCH" -- CLAUDE.md 2>/dev/null \
+  CLUSTER_REINFORCED=$(git -C "$PROJECT_ROOT" diff "$DIFF_RANGE" -- CLAUDE.md 2>/dev/null \
     | grep -E "^\+# REINFORCED " | sed 's/^\+//' || true)
 
   if [[ -n "$CLUSTER_REINFORCED" ]]; then
