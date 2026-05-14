@@ -52,9 +52,11 @@ TIER="$3"
 shift 3
 
 SCOPE_PATH=""
+WAVE=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --scope) SCOPE_PATH="$2"; shift 2 ;;
+    --wave)  WAVE="$2";       shift 2 ;;
     *) echo "ERROR: unknown arg '$1'"; exit 1 ;;
   esac
 done
@@ -140,6 +142,21 @@ if git -C "$PROJECT_ROOT" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; t
 fi
 
 mkdir -p "$CLUSTERS_PARENT"
+
+# ── Tag the pre-wave-merge baseline (idempotent) ──────────────────────────────
+# When --wave is provided, create a `pre-wave-N-merge` tag at the current main
+# HEAD (idempotent — re-running for the 2nd/3rd/4th cluster of the same wave
+# leaves the tag alone). This tag is the baseline the verify script uses in
+# post-merge mode to confirm all cluster outputs landed on main.
+if [[ -n "$WAVE" ]]; then
+  TAG="pre-wave-${WAVE}-merge"
+  if git -C "$PROJECT_ROOT" rev-parse --verify "$TAG" >/dev/null 2>&1; then
+    echo "Tag '$TAG' already exists (set by prior cluster setup) — leaving as-is."
+  else
+    git -C "$PROJECT_ROOT" tag "$TAG"
+    echo "Tagged pre-wave-merge baseline: $TAG → $(git -C "$PROJECT_ROOT" rev-parse --short "$TAG")"
+  fi
+fi
 
 # ── Create the worktree ───────────────────────────────────────────────────────
 echo "Creating worktree:"
