@@ -94,6 +94,8 @@ integrations/superpowers-claude-code/
 ├── finalize-round.sh            # One-command round-close (SHA-A attestation)
 ├── anchor-update-project.sh     # Sync project's run-pipeline.sh from canonical
 └── scripts/
+    ├── anchor-round-close.sh               # Commit a round's Memorial-Updater outputs (single-track + multi-track manual fallback)
+    ├── anchor-wave-init.sh                 # Bring an existing project to multi-track readiness (idempotent)
     ├── multi-track-cluster-setup.sh        # Create a worktree for one cluster in a wave
     └── multi-track-verify-wave-merge.sh    # Post-merge correctness check after wave aggregation
 ```
