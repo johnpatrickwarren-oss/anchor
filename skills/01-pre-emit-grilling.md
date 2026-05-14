@@ -58,6 +58,7 @@ For each artifact type, the grilling checklist differs slightly:
 - Does every spec claim get tested?
 - Are skip-flags present on tests that should be required?
 - Do the defensive patterns (null-checks, edge case handling) cover the new surface?
+- **For each `expect(...)` assertion: would the test still pass if the production line(s) it claims to verify were deleted or no-op'd?** If yes, the test is self-confirming — fix before route. See [`13-anti-self-confirming-tests.md`](./13-anti-self-confirming-tests.md) for the unified mutation-check question that subsumes all 12+ known variants (sort-normalization, lenient-cardinality, null-fixture, domain-inline, etc.).
 
 **Reviewer reports:**
 - Is the audit findings format consistent (severity tier per finding)?
