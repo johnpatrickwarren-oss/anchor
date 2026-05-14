@@ -59,6 +59,11 @@ surfaces at the wave gate.
 - Spec-vs-implementation audit (Reviewer's role within clusters)
 - Intra-cluster routing decisions
 - Retry decisions within a cluster (cluster handles internally up to halt threshold)
+- Mid-project conversion from a serial pipeline to multi-track
+  dispatch. The Coordinator assumes a clean start — DAG construction
+  applies to the full remaining PRD. Projects already mid-stride on a
+  serial pipeline require a separate transition protocol (TBD) that
+  is out of scope for this role.
 
 ## DAG construction discipline
 
@@ -85,6 +90,16 @@ No Claude judgment required at this step.
 For each pair of work units, apply the following deterministic dependency
 tests in order. If any test fires, record a dependency edge with the test
 that fired as the reason.
+
+**Test ordering rationale.** D1 and D5 are primary tests catching the
+most common dependency patterns (shared output ownership; schema
+write-conflict). D2, D3, and D4 are backup tests whose value varies
+with PRD style — interface-contract-heavy PRDs surface more D2 edges;
+PRDs without clean module boundaries surface more D3 edges; PRDs with
+heavy shared-foundation file overlap surface more D4 contention. On
+well-structured PRDs (explicit data flows, clean module separation),
+D2 and D3 may surface zero unique edges. This is not a defect; it
+reflects the PRD's structure doing dependency work upstream.
 
 **Test D1 — Shared output ownership.** Does WU-A write to a file, schema,
 or interface that WU-B reads from? If yes: WU-A → WU-B (A must complete
@@ -162,9 +177,13 @@ Before proceeding to wave planning, validate the DAG:
 - **Island check.** Any work unit with no edges (no dependencies in or
   out) is a candidate for Wave 1 or any wave. Flag for explicit placement.
 - **Foundation identification.** Work units whose outputs are inputs to
-  3+ other work units are foundations. They must land in Wave 1 regardless
-  of their own dependency-in count. Data models, shared interfaces, and
-  core API contracts are the typical foundation candidates.
+  3+ other work units **across 2+ domains/modules** are foundations.
+  They must land in Wave 1 regardless of their own dependency-in count.
+  Data models, shared interfaces, and core API contracts are the typical
+  foundation candidates. The "2+ domains" requirement filters out
+  false-positive foundations — a WU that feeds 3 follow-ons all within
+  the same module is a domain head, not a cross-cutting foundation, and
+  doesn't earn Wave 1 placement on connectivity alone.
 
 ### Step 5 — Wave sequencing
 
@@ -175,6 +194,18 @@ From the validated DAG, assign work units to waves:
   units completing in Wave N or earlier
 - **Final wave:** Integration, cross-cutting concerns, hardening — work
   units that touch outputs from multiple prior waves
+
+**Operational cap on intra-wave parallelism.** Even when the DAG
+allows N concurrent clusters in a single wave, default to a cap of
+**≤5 clusters per wave**. Operator review burden, log volume, and
+arbitration-lock contention all scale super-linearly past that point.
+When the DAG allows N>cap WUs in a wave, sub-wave them into
+`ceil(N/cap)` consecutive waves containing arbitrary subsets — DAG
+correctness is preserved because intra-wave units are independent by
+construction (no edges among them), so any sub-partition respects the
+dependency graph. The cap is configurable via
+`coordination/multi-track-config.json` `max-parallelism-per-wave`
+(default 5).
 
 Record the wave plan as a durable artifact (`WAVE-PLAN-NN.md` in the
 coordination folder). The wave plan is the Coordinator's primary output
