@@ -21,18 +21,26 @@
 #   --round R01          Round identifier (default: R01)
 #   --start-at ROLE      Resume from a specific role (after resolving escalation)
 #   --prd PATH           Path to PRD (default: coordination/PRD.md)
-#   --tier T0|T1|T3      Pipeline tier (default: T3)
-#                          T3 = full Anchor (Architect + Implementer + Reviewer + Memorial)
-#                          T1 = pair (Implementer + Reviewer + Memorial; Implementer
-#                               writes its own thin spec — no separate Architect)
-#                          T0 = solo (Implementer only; spec, execute, memorial all
-#                               inline in one session — no separate Reviewer or
-#                               Memorial-Updater). Use only for mechanical / doc-only /
-#                               test-only / cosmetic rounds. Cheapest but loses the
-#                               cold-eye Reviewer safety net.
-#                        See CLAUDE.md.template "TIER SELECTION" section for the
-#                        rubric (A1–A7 / S1–S5 / Z1–Z5) on when each is appropriate.
-#                        When in doubt, pick T3.
+#   --tier solo|audit|full   Pipeline tier (default: full)
+#                              full  = full Anchor (Architect + Implementer +
+#                                      Reviewer + Memorial)
+#                              audit = Implementer + Reviewer + Memorial
+#                                      (Implementer writes its own thin spec;
+#                                      no separate Architect)
+#                              solo  = Implementer only (spec, execute, memorial
+#                                      all inline in one session; no separate
+#                                      Reviewer or Memorial-Updater). Cheapest
+#                                      but loses the cold-eye Reviewer safety
+#                                      net — use only for mechanical / doc-only
+#                                      / test-only / cosmetic rounds.
+#                            Backward-compat: T0 / T1 / T3 are accepted as
+#                            aliases for solo / audit / full with a deprecation
+#                            warning. The older names collided with Anchor's
+#                            four-anchor checkpoint naming (T0/T1/T2/T3); the
+#                            verbal names avoid that collision.
+#                            See skills/11-round-scaling.md in canonical anchor
+#                            for the full rubric (A1–A7 / S1–S5 / Z1–Z5).
+#                            When in doubt, pick full.
 #   --dry-run            Print what would run without executing
 #   --no-model-routing   Use CLAUDE_DEFAULT_MODEL for all roles
 #
@@ -55,7 +63,7 @@ START_AT=""
 PRD_PATH="$COORD/PRD.md"
 DRY_RUN=false
 MODEL_ROUTING=true
-TIER="T3"
+TIER="full"
 
 # Model routing
 # Opus 4.7: Architect (design reasoning) and Reviewer (adversarial audit)
@@ -104,10 +112,13 @@ Options:
   --round R01          Round identifier (default: R01)
   --start-at ROLE      Resume from a specific role (after resolving escalation)
   --prd PATH           Path to PRD (default: coordination/PRD.md)
-  --tier T0|T1|T3      Pipeline tier (default: T3)
-                         T3 = full Anchor (Architect + Implementer + Reviewer + Memorial)
-                         T1 = pair (Implementer + Reviewer + Memorial; no Architect)
-                         T0 = solo (Implementer only — mechanical/doc-only rounds)
+  --tier solo|audit|full
+                       Pipeline tier (default: full)
+                         full  = Architect + Implementer + Reviewer + Memorial
+                         audit = Implementer + Reviewer + Memorial (no Architect)
+                         solo  = Implementer only (mechanical / doc-only rounds)
+                       Backward-compat: T0/T1/T3 still accepted (deprecation
+                       warning emitted). See skills/11-round-scaling.md.
   --dry-run            Print what would run without executing
   --no-model-routing   Use CLAUDE_DEFAULT_MODEL for all roles
 
@@ -122,27 +133,49 @@ EOF
 done
 
 # ── Tier configuration ────────────────────────────────────────────────────────
-# T3 (default): full Anchor — Architect writes spec, Implementer executes,
-#               Reviewer audits cold, Memorial records.
-# T1:           no separate Architect. Implementer applies brainstorm+design
-#               inline, writes a thin spec, then executes. Reviewer + Memorial
-#               still run. Use for small features where the per-round cost of
-#               a separate Architect role outweighs its quality contribution.
+# full (default): full Anchor — Architect writes spec, Implementer executes,
+#                 Reviewer audits cold, Memorial records.
+# audit:          no separate Architect. Implementer applies brainstorm+design
+#                 inline, writes a thin spec, then executes. Reviewer + Memorial
+#                 still run. Use for small features where the per-round cost of
+#                 a separate Architect role outweighs its quality contribution.
+# solo:           Implementer only. Spec, execute, memorial inline.
+#                 Use only for mechanical / doc-only / test-only / cosmetic
+#                 rounds where visual diff inspection replaces cold-eye review.
+#
+# Backward-compat: T0 / T1 / T3 aliases for solo / audit / full. The older
+# names collided with Anchor's four-anchor checkpoint naming (T0/T1/T2/T3);
+# the verbal names are now canonical.
 case "$TIER" in
   T0)
-    ROLES=("IMPLEMENTER")
-    TIER_DESC="T0 (solo: Implementer handles spec, execute, memorial inline — no Reviewer)"
+    echo "WARN:  --tier T0 is deprecated; use --tier solo (same behavior)" >&2
+    TIER="solo"
     ;;
   T1)
-    ROLES=("IMPLEMENTER" "REVIEWER" "MEMORIAL-UPDATER")
-    TIER_DESC="T1 (pair: Implementer writes thin spec + executes; Reviewer audits)"
+    echo "WARN:  --tier T1 is deprecated; use --tier audit (same behavior)" >&2
+    TIER="audit"
     ;;
   T3)
+    echo "WARN:  --tier T3 is deprecated; use --tier full (same behavior)" >&2
+    TIER="full"
+    ;;
+esac
+
+case "$TIER" in
+  solo)
+    ROLES=("IMPLEMENTER")
+    TIER_DESC="solo (Implementer handles spec, execute, memorial inline — no Reviewer)"
+    ;;
+  audit)
+    ROLES=("IMPLEMENTER" "REVIEWER" "MEMORIAL-UPDATER")
+    TIER_DESC="audit (Implementer writes thin spec + executes; Reviewer audits cold)"
+    ;;
+  full)
     ROLES=("ARCHITECT" "IMPLEMENTER" "REVIEWER" "MEMORIAL-UPDATER")
-    TIER_DESC="T3 (full: Architect + Implementer + Reviewer + Memorial)"
+    TIER_DESC="full (Architect + Implementer + Reviewer + Memorial)"
     ;;
   *)
-    echo "Unsupported --tier value: '$TIER'. Valid: T0, T1, T3."
+    echo "Unsupported --tier value: '$TIER'. Valid: solo, audit, full (or legacy T0/T1/T3)."
     exit 1
     ;;
 esac
@@ -442,13 +475,13 @@ PROMPT
 
 build_implementer_prompt() {
   case "$TIER" in
-    T0) build_implementer_prompt_t0 ;;
-    T1) build_implementer_prompt_t1 ;;
-    *)  build_implementer_prompt_t3 ;;
+    solo)  build_implementer_prompt_solo ;;
+    audit) build_implementer_prompt_audit ;;
+    *)     build_implementer_prompt_full ;;
   esac
 }
 
-build_implementer_prompt_t3() {
+build_implementer_prompt_full() {
   local spec_path
   spec_path=$(awk '/^  - coordination\/specs\//{print $2; exit}' \
     "$COORD/NEXT-ROLE.md" 2>/dev/null \
@@ -528,9 +561,9 @@ a clear commit message.
 PROMPT
 }
 
-build_implementer_prompt_t1() {
+build_implementer_prompt_audit() {
   cat > "$COORD/.prompt-implementer.md" << PROMPT
-You are the IMPLEMENTER for round $ROUND (T1 mode — no Architect; you author
+You are the IMPLEMENTER for round $ROUND (audit mode — no Architect; you author
 the spec yourself, then execute it).
 
 Read these before writing any code:
@@ -539,7 +572,7 @@ Read these before writing any code:
   - coordination/MEMORIAL.md  (this project's violation history)
   - Existing source files in src/ and tests/
 
-In T1 mode you wear two hats in one session: spec author and implementer.
+In audit mode you wear two hats in one session: spec author and implementer.
 Both halves operate under the same disciplines — pre-emit grilling, no scope
 creep, audit trail in coordination/. The Reviewer reads your spec PLUS the
 code; write the spec for cold-eye consumption, not as scratch.
@@ -556,7 +589,7 @@ Required sections:
   4. Anti-scope (explicit list of what is NOT in this round)
   5. Open questions ("None — all resolved" or escalate via DIAGNOSTIC)
 
-Per-file pseudocode is NOT required in T1 — you write the code yourself, so
+Per-file pseudocode is NOT required in audit — you write the code yourself, so
 prescribing it to yourself is bookkeeping without value. Tactical implementation
 detail (import paths, locator syntax, utility class names) belongs in the code,
 not the spec.
@@ -617,26 +650,26 @@ On clean completion (all tests pass, no halts):
     Architect-equivalent work this round).
 
 ROLE BOUNDARY:
-You author the spec AND implement it in T1 — but the Reviewer remains
+You author the spec AND implement it in audit — but the Reviewer remains
 adversarial and independent. Write a spec the Reviewer can verify cold:
 verifiable ACs, explicit anti-scope, no hidden assumptions. Tactical choices
 made during implementation get documented in commit messages, not the spec.
 PROMPT
 }
 
-build_implementer_prompt_t0() {
+build_implementer_prompt_solo() {
   cat > "$COORD/.prompt-implementer.md" << PROMPT
-You are the IMPLEMENTER for round $ROUND (T0 mode — SOLO: no separate
+You are the IMPLEMENTER for round $ROUND (solo mode — SOLO: no separate
 Reviewer, no separate Memorial-Updater. You handle spec, execute, memorial
-inline in this one session. The operator selected T0 because this round
+inline in this one session. The operator selected solo because this round
 matches the Z1–Z5 eligibility rubric: mechanical / doc-only / test-only /
 cosmetic / configuration-tweak work that does not warrant cold-eye review.
 
-T0 IS NOT FOR: new behavior, schema changes, middleware/auth/shared-
+solo IS NOT FOR: new behavior, schema changes, middleware/auth/shared-
 infrastructure changes, anything where correctness needs more than
-visual inspection. If you discover the round is NOT actually T0-eligible
+visual inspection. If you discover the round is NOT actually solo-eligible
 (e.g., scope grew, you found you must touch shared infrastructure),
-HALT with a DIAGNOSTIC and recommend operator promote to T1 or T3.
+HALT with a DIAGNOSTIC and recommend operator promote to audit or full.
 
 Read these before writing any code:
   - $PRD_PATH  (requirements — the scope block for this round)
@@ -644,13 +677,13 @@ Read these before writing any code:
   - coordination/MEMORIAL.md  (this project's violation history)
   - Existing source files in src/ and tests/
 
-In T0 mode you wear three hats in one session: spec author, implementer,
+In solo mode you wear three hats in one session: spec author, implementer,
 and memorial updater. All three operate under the same disciplines —
 pre-emit grilling, no scope creep, audit trail in coordination/.
 
 STEP 1 — Write coordination/specs/Q-${ROUND}-SPEC.md (very thin: ≤1 page)
 
-Required sections (be brief — T0 work is small):
+Required sections (be brief — solo work is small):
   1. Goal (1-2 sentences — what this round delivers; cite Z criterion)
   2. Mechanism (the specific change; usually 1-3 sentences)
   3. Acceptance criteria (Given/When/Then; usually 1-3 ACs)
@@ -672,8 +705,8 @@ with a commit-message note. Architectural decisions warrant a HALT.
 
 HALT CONDITIONS — stop and ESCALATE if:
   a. The round turns out to require behavior change, schema edits, or
-     touching middleware/auth/shared infrastructure (T0 is wrong tier;
-     recommend operator promote to T1 or T3).
+     touching middleware/auth/shared infrastructure (solo is wrong tier;
+     recommend operator promote to audit or full).
   b. Spec/reality conflict requiring component-inventory change.
   c. PRD ambiguity producing materially different implementations.
   d. Any operator directive from a prior escalation that this round
@@ -692,11 +725,11 @@ STEP 3 — Pre-emit review of your own work
 
 $SP_REVIEW
 
-Because there is no separate Reviewer in T0, your self-review is the
+Because there is no separate Reviewer in solo, your self-review is the
 last line of defense before merge. Be honest. If the round started as
-T0 but the diff exceeded mechanical bounds, the right call is to STOP,
+solo but the diff exceeded mechanical bounds, the right call is to STOP,
 write a DIAGNOSTIC explaining what grew, and recommend the operator
-re-run as T1 (so a cold-eye Reviewer audits the result).
+re-run as audit (so a cold-eye Reviewer audits the result).
 
 STEP 4 — Memorial-accretion (inline, before exit)
 
@@ -720,7 +753,7 @@ STEP 5 — Write coordination/logs/ROUND-${ROUND}-SUMMARY.md
 Brief (≤1 page) — sections:
   ## What worked
   ## What violated discipline (if any)
-  ## Tier note: chose T0 because [Zn]; final diff stayed within mechanical bounds [yes/no]
+  ## Tier note: chose solo because [Zn]; final diff stayed within mechanical bounds [yes/no]
   ## Reinforcements added to CLAUDE.md this round (if any)
 
 STEP 6 — Routing
@@ -735,11 +768,11 @@ On clean completion, the pipeline will exit cleanly when this session
 ends. There is no Reviewer or Memorial-Updater session after you.
 
 ROLE BOUNDARY:
-You wear all three hats in T0, but the disciplines do not relax — they
-shift onto you. The fact that no Reviewer runs is the cost of T0; do not
+You wear all three hats in solo, but the disciplines do not relax — they
+shift onto you. The fact that no Reviewer runs is the cost of solo; do not
 use it as license to skip self-review or memorial-accretion. If you find
 mid-session that the round is bigger than expected, HALT and recommend
-promotion to T1 — that is the right move, not a faster pass.
+promotion to audit — that is the right move, not a faster pass.
 PROMPT
 }
 
@@ -989,7 +1022,7 @@ run_role() {
 }
 
 # ── Role sequence control ─────────────────────────────────────────────────────
-# ROLES is set at script-top tier configuration (T0, T1, or T3).
+# ROLES is set at script-top tier configuration (solo, audit, or full).
 
 should_run() {
   local role="$1"

@@ -40,13 +40,13 @@ against your PRD and pauses only on genuine decisions. For smaller rounds you ca
 skip layers with the tier dial:
 
 ```bash
-./run-pipeline.sh --round R02 --tier T1   # skip Architect — Implementer self-specs
-./run-pipeline.sh --round R03 --tier T0   # solo Implementer for mechanical work
+./run-pipeline.sh --round R02 --tier audit   # skip Architect — Implementer self-specs
+./run-pipeline.sh --round R03 --tier solo    # solo Implementer for mechanical work
 ```
 
 See the tier-selection rubric (decision tree + worked examples) in
-[`CLAUDE.md.template`](integrations/superpowers-claude-code/CLAUDE.md.template)
-for when each tier fits. **When in doubt, pick T3 (the default).**
+[`skills/11-round-scaling.md`](skills/11-round-scaling.md)
+for when each tier fits. **When in doubt, pick `full` (the default).**
 
 ## What problem this solves
 
@@ -74,7 +74,7 @@ compose, not compete.
 
 | Layer | What it provides | Owned by |
 |---|---|---|
-| **Role-level** | Which role runs when (Architect / Implementer / Reviewer / Memorial-Updater), routing between roles via `NEXT-ROLE.md`, cross-project accumulated reinforcements in `MEMORIAL.md` and `~/.claude/CROSS-PROJECT-MEMORIAL.md`, tier dial (T0/T1/T3) to scale role count to round complexity | **Anchor** |
+| **Role-level** | Which role runs when (Architect / Implementer / Reviewer / Memorial-Updater), routing between roles via `NEXT-ROLE.md`, cross-project accumulated reinforcements in `MEMORIAL.md` and `~/.claude/CROSS-PROJECT-MEMORIAL.md`, tier dial (`solo` / `audit` / `full`) to scale role count to round complexity (see [`skills/11-round-scaling.md`](skills/11-round-scaling.md)) | **Anchor** |
 | **Phase-level** | What each role does inside its session — brainstorm (3 approaches with tradeoffs), design (component sketch), execute (TDD red-green-refactor), review (re-read as next role, mark assumptions) | **Superpowers** |
 
 In Mode 2 (the automated pipeline), each role's prompt embeds the
