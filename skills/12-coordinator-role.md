@@ -103,8 +103,18 @@ If yes: record as a contention risk, not necessarily a dependency.
 Resolve via worktree isolation unless the overlap is in a shared
 foundation file, in which case: WU-A → WU-B or serialize.
 
+**Test D5 — Migration ownership.** Does WU-A or WU-B add a file to the
+project's migration directory (default conventions: `prisma/migrations/`,
+`db/migrate/`, `migrations/`, `supabase/migrations/`; configurable per
+project)? If both do, they have a serial dependency regardless of file
+overlap — the migration history is linear by construction in every
+modern ORM. The work unit whose intended schema state is earlier lands
+first. If intended order is ambiguous from the PRD, escalate to Step 3.
+The migration lock described under Shared-resource arbitration is a
+fallback for D5 misses, not a primary discipline.
+
 Record every edge with: source work unit, target work unit, dependency
-test that fired, confidence (HIGH if D1/D2, MEDIUM if D3/D4).
+test that fired, confidence (HIGH if D1/D2/D5, MEDIUM if D3/D4).
 
 ### Step 3 — Claude judgment at ambiguity boundaries
 
@@ -215,6 +225,11 @@ In single-pipeline (Mode 2) mode, the Memorial-Updater role remains as
 a separate fourth role per round — no parallelism, no race, no need to
 collapse.
 
+For the operational mechanism — locking primitives, fragment merge
+order, timeout discipline, cross-project memorial freshness, schema
+migration arbitration, and CLAUDE.md stamping under parallelism — see
+Shared-resource arbitration in multi-track mode below.
+
 ## Wave gate discipline
 
 The wave gate is the Coordinator's primary quality control mechanism
@@ -246,6 +261,160 @@ Wave gate checklist (run before dispatching Wave N+1):
 The wave gate never advances under CRITICAL unresolved findings.
 LIKELY-SURFACES findings from any cluster are pre-flagged to the next
 wave's relevant clusters before dispatch.
+
+## Shared-resource arbitration in multi-track mode
+
+Multi-track parallelism introduces several project-shared and
+operator-global resources that cannot be written concurrently without
+data loss or correctness violations. The Coordinator owns serialization
+at every such boundary. The structural principle:
+
+> Tracks execute independently; the Coordinator coordinates only the
+> moments where they cannot.
+
+Single-pipeline (Mode 2) execution does not require these mechanisms —
+one writer, one cycle, serialization is trivial. The disciplines below
+apply only when two or more tracks may be active concurrently against
+the same project working tree.
+
+### Resources requiring arbitration
+
+| Resource | Writer | Arbitration mechanism |
+|---|---|---|
+| `coordination/MEMORIAL.md` | Coordinator at wave gate | Cluster fragments aggregated under a single project lock |
+| `~/.claude/CROSS-PROJECT-MEMORIAL.md` | Operator-driven merge script | Per-project shards merged in batch on operator cadence (default weekly) |
+| `coordination/CLAUDE.md` (canonical) | Coordinator at wave gate | Reinforcement appends under the same project lock as memorial |
+| Per-session role/round stamp | Pipeline dispatcher | Per-track stamped copies; canonical is never stamped |
+| Migration directory (e.g., `prisma/migrations/`) | Cluster Implementer | DAG D5 enforces serial dependency; migration lock catches D5 misses |
+
+### Memorial state
+
+**Project memorial (`coordination/MEMORIAL.md`).** Clusters never write
+directly. Each cluster emits a fragment at
+`coordination/clusters/<cluster-id>/MEMORIAL-fragment.md` (single-writer
+inside the cluster — no concurrency). At the wave gate, the Coordinator
+takes a `flock(2)` advisory lock on `coordination/.MEMORIAL.lock`,
+appends all fragments from the just-completed wave to `MEMORIAL.md` in
+deterministic order (cluster-id ASC, then fragment line order), and
+releases the lock. Fragments are appended verbatim — no rewriting.
+
+**Cross-project memorial (`~/.claude/CROSS-PROJECT-MEMORIAL.md`).** Not
+written per round. Each project accumulates its own per-project shard
+at `~/.claude/projects/<project-id>/MEMORIAL-shard.md`. A separate
+operator-invoked script
+(`~/anchor/integrations/superpowers-claude-code/merge-cross-project-memorial.sh`,
+to be added as the integration ships) folds all per-project shards into
+the canonical cross-project file in batch. Default cadence: weekly. The
+cross-project memorial is advisory context for Architect/Reviewer reads,
+not load-bearing per-round state — a few days of staleness is
+acceptable.
+
+**Per-cluster fragment format.** CONFIRMATION/VIOLATION lines in the
+same format as `MEMORIAL.md`. Each line tagged with cluster ID and
+work unit ID so the Coordinator's merge is deterministic even if
+fragment file timestamps drift.
+
+### CLAUDE.md role/round stamping
+
+In Mode 2, `run-pipeline.sh` stamps the project's `CLAUDE.md` with the
+current role and round at session start. Under multi-track parallelism,
+concurrent stamping by parallel sessions produces undefined state.
+
+Arbitration:
+
+- The pipeline dispatcher writes per-track stamped copies to
+  `coordination/clusters/<cluster-id>/CLAUDE.md`. Each cluster session
+  reads its own per-track copy as the role-anchored file. Per-track
+  copies are ephemeral (`coordination/clusters/` should be
+  `.gitignore`d) and regenerated at each session start.
+- The canonical `coordination/CLAUDE.md` (version-controlled) holds
+  only the methodology body and accumulated reinforcements. The
+  canonical file is never stamped.
+- The Coordinator appends new reinforcements to the canonical file at
+  wave gate under the same `flock(2)` lock that serializes memorial
+  merges (`coordination/.MEMORIAL.lock` — one lock, both files).
+
+This preserves the role-identity discipline
+([`skills/09-role-anchoring.md`](./09-role-anchoring.md)) without
+collision and without forcing tracks to wait on a stamp.
+
+### Schema migrations
+
+The DAG D5 test catches migration ownership at planning time and places
+migration-touching work units in different waves. This handles the
+common case deterministically and at zero runtime cost.
+
+When D5 misses — work unit's file-tree-scope did not declare a
+migration directory touch, but the Implementer generates a migration
+anyway — a migration lock catches it at execution time:
+
+- Each cluster Implementer takes `flock(2)` on
+  `<migration-dir>/.migration.lock` before invoking the migration
+  generator. The lock is project-wide by default. Projects with
+  multiple databases may configure per-database locks via
+  `coordination/multi-track-config.json` (a future extension).
+- Lock hold time should be <30 seconds for routine migrations. Default
+  timeout: 10 minutes. On timeout, the dispatcher aborts the
+  lock-holding cluster, writes
+  `coordination/diagnostics/DIAGNOSTIC-track-<id>-migration-timeout.md`,
+  and signals the operator (the same channel as cluster-level
+  ESCALATE).
+- The 10-minute default tolerates the laptop-sleep failure mode
+  observed across many sequential rounds. Projects with legitimately
+  slow migrations (large data backfills) override per-project.
+
+**ORM portability.** D5 and the migration lock reference a
+project-configured migration-directory path with a convention fallback:
+`prisma/migrations/`, `db/migrate/`, `migrations/`, `supabase/migrations/`.
+Each project declares its migration directory at coordinator setup
+(default: first matching convention path that exists in the project
+tree). Methodology is ORM-agnostic by design.
+
+### Arbitration primitives
+
+**Locking.** All arbitration uses `flock(2)` advisory locks on lock
+files inside the project working tree. Reliable on macOS and Linux
+local filesystems. Not reliable on network-mounted file systems (NFS,
+SMB, iCloud Drive, Dropbox synced folders). Multi-track Anchor requires
+the project working tree on a local filesystem. Lock files are tagged
+with the holding PID so stale locks (process dead, lock held) can be
+cleared deterministically.
+
+**Poll loop.** Lock acquisition uses a 5-second poll loop with a
+per-resource timeout. Defaults: memorial / CLAUDE.md merge at wave gate
+= 30 minutes (long, to tolerate a slow Memorial-Updater wave); migration
+= 10 minutes (short, because hold time should be seconds and timeout
+indicates a stuck process).
+
+**No daemon.** All arbitration is file-based. No background daemon
+required. Crash recovery: stale-lock detection runs at pipeline
+start (`run-pipeline.sh` pre-flight) — for each lock file with a
+PID-tagged holder, if the tagged PID is not running, the lock is
+cleared with a logged warning to the operator.
+
+**Observability.** The Coordinator writes
+`coordination/multi-track-status.json` at each lock acquire/release —
+a one-shot snapshot (no append). Operator-facing warnings:
+acquired-lock-age >2× the resource's median observed hold time fires a
+warning (default thresholds before observation data: memorial ~10 min
+warn, migration ~3 min warn). Halt new dispatches when
+acquired-lock-age >2× the per-resource timeout.
+
+### When NOT to apply
+
+These mechanisms exist for genuine multi-track execution. They are
+overhead in Mode 2. Apply only when:
+
+- Two or more cluster sessions may be active on the same project at the
+  same wall-clock time
+- The Coordinator has emitted a wave plan with ≥2 clusters in at least
+  one wave
+- The operator has explicitly enabled multi-track dispatch (a future
+  pipeline flag — TBD)
+
+If the project's wave plan has at most one cluster per wave, the
+Coordinator dispatches sequentially and the arbitration mechanisms are
+inert. The methodology degrades gracefully to single-pipeline behavior.
 
 ## Memorial accretion at the coordinator level
 
@@ -326,6 +495,17 @@ the Coordinator has:
   cross-cluster quality check. A rubber-stamp wave gate is worse than
   no wave gate — it creates false confidence that cross-cluster
   integration has been verified.
+- **Treating the migration lock as a substitute for D5.** D5 catches
+  migration ownership at planning time for zero runtime cost; the lock
+  is a fallback when D5 misclassified the work unit. A Coordinator that
+  routinely relies on the migration lock rather than D5 has a
+  classification discipline problem and will hit lock timeouts at scale.
+- **Adding arbitration mechanisms to Mode 2 work.** Lock files,
+  per-track CLAUDE.md copies, and fragment merging are pure overhead in
+  single-pipeline mode. The skill prescribes these mechanisms only when
+  ≥2 cluster sessions run concurrently. Applying them to a
+  single-cluster wave wastes operator setup time and adds failure modes
+  for no benefit.
 
 ## Cost
 
