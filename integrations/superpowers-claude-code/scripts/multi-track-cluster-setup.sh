@@ -1,20 +1,27 @@
 #!/bin/bash
 # multi-track-cluster-setup.sh — Create a git worktree for one Anchor cluster.
 #
-# Usage: ./scripts/multi-track-cluster-setup.sh <cluster-id> <round> <tier>
+# Usage:
+#   ./scripts/multi-track-cluster-setup.sh <cluster-id> <round> <tier> [--scope PATH]
 #
-# Example:
+# Examples:
+#   # Manual scope authoring (operator drafts PRD scope block in the worktree):
 #   ./scripts/multi-track-cluster-setup.sh wu-p2-1 R40 full
+#
+#   # Coordinator-pre-authored scope (planted into worktree's PRD.md automatically):
+#   ./scripts/multi-track-cluster-setup.sh wu-p2-1 R40 full \
+#       --scope ~/anchor/case-studies/.../wave-1-cluster-scopes/wu-p2-1.md
 #
 # What it does:
 #   1. Validates main branch is clean and committed
 #   2. Creates a git worktree at $HOME/projects/<project>-clusters/<cluster-id>/
 #      on a new branch cluster/<cluster-id>-<round>
-#   3. Prints next steps for the operator
+#   3. If --scope <PATH> is provided: plants the scope content into the
+#      worktree's coordination/PRD.md (marking any existing "current round"
+#      block as historical first) and commits it as the routing commit
+#   4. Prints next steps for the operator
 #
 # What it does NOT do:
-#   - Author the PRD scope block for the cluster's work unit (operator does this
-#     in the worktree's coordination/PRD.md before running the pipeline)
 #   - Launch the pipeline (operator runs run-pipeline.sh manually in the worktree
 #     to give them control over which Claude Code session executes it)
 #   - Aggregate memorials at wave gate (see MULTI-TRACK-RUNBOOK.md for the
@@ -29,16 +36,33 @@ set -euo pipefail
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 if [[ $# -lt 3 ]]; then
-  echo "Usage: $0 <cluster-id> <round> <tier>"
+  echo "Usage: $0 <cluster-id> <round> <tier> [--scope PATH]"
   echo "  cluster-id  short identifier for this cluster (e.g., wu-p2-1)"
   echo "  round       round identifier (e.g., R40)"
   echo "  tier        solo | audit | full"
+  echo "  --scope     optional path to a pre-authored PRD scope block file."
+  echo "              If provided, content is planted into the worktree's"
+  echo "              coordination/PRD.md and committed as the routing commit."
   exit 1
 fi
 
 CLUSTER_ID="$1"
 ROUND="$2"
 TIER="$3"
+shift 3
+
+SCOPE_PATH=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --scope) SCOPE_PATH="$2"; shift 2 ;;
+    *) echo "ERROR: unknown arg '$1'"; exit 1 ;;
+  esac
+done
+
+if [[ -n "$SCOPE_PATH" && ! -f "$SCOPE_PATH" ]]; then
+  echo "ERROR: --scope path does not exist: $SCOPE_PATH"
+  exit 1
+fi
 
 # Validate tier early
 case "$TIER" in
@@ -132,8 +156,93 @@ if [[ ! -x "$WORKTREE_PATH/run-pipeline.sh" ]]; then
   echo "      run-pipeline.sh is tracked in git on main."
 fi
 
+# ── Optional: plant Coordinator-pre-authored PRD scope into worktree ──────────
+# When the Coordinator role has pre-authored a scope block for this cluster
+# (typical multi-track flow), --scope <PATH> points at it. Plant into the
+# worktree's coordination/PRD.md so the cluster pipeline picks it up as the
+# current-round scope without operator typing.
+if [[ -n "$SCOPE_PATH" ]]; then
+  echo "Planting pre-authored scope from: $SCOPE_PATH"
+
+  WORKTREE_PRD="$WORKTREE_PATH/coordination/PRD.md"
+  if [[ ! -f "$WORKTREE_PRD" ]]; then
+    echo "ERROR: $WORKTREE_PRD does not exist. Cannot plant scope."
+    echo "       The worktree is created but the routing commit failed."
+    exit 1
+  fi
+
+  # If the PRD currently has a "current round" header, mark it as historical
+  # first (matches the convention used in prior archfolio rounds).
+  if grep -qE "^## Round R[0-9]+ scope \(.*\) — current round" "$WORKTREE_PRD"; then
+    # Use perl for portable in-place edit. macOS BSD sed differs from GNU.
+    perl -i -pe 's/^(## Round R(\d+) scope \(.+\)) — current round/$1 — historical, R$2 only/' "$WORKTREE_PRD"
+  fi
+
+  # Insert the new scope above the previous-current (now historical) marker,
+  # OR at the top of the PRD body (after the document title) if no historical
+  # block exists yet.
+  TMP_PRD="$(mktemp)"
+  if grep -qE "^## Round R[0-9]+ scope \(.+\) — historical, R[0-9]+ only" "$WORKTREE_PRD"; then
+    # Insert above the first historical block.
+    awk -v scope_file="$SCOPE_PATH" '
+      /^## Round R[0-9]+ scope \(.+\) — historical, R[0-9]+ only/ && !done {
+        while ((getline line < scope_file) > 0) print line;
+        close(scope_file);
+        print "";
+        done = 1;
+      }
+      { print }
+    ' "$WORKTREE_PRD" > "$TMP_PRD"
+  else
+    # No historical blocks present — insert after the first heading line.
+    awk -v scope_file="$SCOPE_PATH" '
+      NR == 1 { print; next }
+      /^# / && !done {
+        print;
+        print "";
+        while ((getline line < scope_file) > 0) print line;
+        close(scope_file);
+        print "";
+        done = 1;
+        next;
+      }
+      { print }
+    ' "$WORKTREE_PRD" > "$TMP_PRD"
+  fi
+  mv "$TMP_PRD" "$WORKTREE_PRD"
+
+  # Commit the routing change in the worktree.
+  git -C "$WORKTREE_PATH" add coordination/PRD.md
+  git -C "$WORKTREE_PATH" commit -m "$ROUND routing: cluster $CLUSTER_ID (Coordinator-authored scope from $(basename "$SCOPE_PATH"))"
+
+  echo "  ✅ scope planted + committed in worktree"
+fi
+
 # ── Print operator next steps ─────────────────────────────────────────────────
-cat <<EOF
+if [[ -n "$SCOPE_PATH" ]]; then
+  cat <<EOF
+
+✅ Cluster worktree created with Coordinator-authored scope.
+
+NEXT STEPS (operator):
+
+1. Open a new Claude Code session in the worktree:
+       cd $WORKTREE_PATH
+
+2. Launch the pipeline (scope is already in coordination/PRD.md):
+       ./run-pipeline.sh --round $ROUND --tier $TIER
+
+3. Wait for ROUND-COMPLETE. Then return to the main project root and proceed
+   with the rest of the wave's clusters (each gets its own setup invocation
+   from main, in parallel with this one).
+
+4. After ALL clusters in the wave reach ROUND-COMPLETE, follow the wave-merge
+   procedure in MULTI-TRACK-RUNBOOK.md to aggregate cluster results back
+   into main.
+
+EOF
+else
+  cat <<EOF
 
 ✅ Cluster worktree created.
 
@@ -160,3 +269,4 @@ NEXT STEPS (operator):
    into main.
 
 EOF
+fi
