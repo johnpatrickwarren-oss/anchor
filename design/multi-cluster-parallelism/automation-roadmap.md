@@ -98,6 +98,9 @@ multi-day.
 | A4 | Tier-name canonical sync OR backward-compat in run-pipeline.sh that accepts both legacy and new | S | — |
 | A5 | `anchor-wave gate --wave N` — waits for all clusters to reach terminal state; aggregates memorial fragments via custom merge driver; auto-merges cluster branches; runs verify; generates WAVE-GATE-NN draft | L | A3 |
 | A6 | Custom git merge driver for `coordination/MEMORIAL.md` and `CLAUDE.md` — union append-only strategy, no operator conflict resolution | M | — |
+| A7 | **Memorial-Updater role auto-commits its outputs at clean completion.** Today the Memorial-Updater writes REVIEWER-REPORT-RNN.md, ROUND-RNN-SUMMARY.md, CLAUDE.md REINFORCED appends, MEMORIAL.md appends, and NEXT-ROLE.md final state — but does NOT commit them. The operator must commit at round-close. This is fine for single-track (operator is attending) but in multi-track the operator isn't attending each cluster end. **The Memorial-Updater step in run-pipeline.sh must run a final commit after the role's session ends.** Empirically validated as the highest-cost recovery item in Wave 1 (F1 finding). | S | — |
+| A8 | **Fix `multi-track-verify-wave-merge.sh` to work post-merge.** Today it does `git diff main...$BRANCH` which is empty after merging the branches. Replace with a tag-based comparison: at dispatch time, the dispatcher tags `pre-wave-N-merge`; verify diffs main HEAD against that tag instead of the cluster branches. F2 finding. | S | A5 |
+| A9 | **`.gitignore` per-round `.pipeline-RNN.lock` files.** Implementer commits these as part of SHA-A coordination artifacts, then run-pipeline.sh deletes them at pipeline end, but the deletions are uncommitted (rolled into Memorial-Updater's uncommitted state). Fix: add `coordination/.pipeline-*.lock` to project `.gitignore` so they're never tracked. F5 finding. | S | — |
 
 ### Tier B — quality of life
 
@@ -126,6 +129,42 @@ multi-day.
 | Real-time mid-flight cross-cluster coordination | Per skills/12, deliberately out of scope — clusters are independent during execution |
 | Generic `claude` headless wrapper that's not Anchor-specific | Out of scope for this methodology; that's a Claude Code feature |
 | GUI for wave dispatch / monitoring | The CLI + Claude monitor session already covers operator UX; GUI is a separate product |
+
+---
+
+## Wave 1 empirical findings (2026-05-14)
+
+ArchFolio's Wave 1 ran 4 cluster pipelines in parallel against a real
+PRD; all reached MERGE-READY with no CRITICAL findings. The empirical
+exercise surfaced 5 friction points (F1–F5) that map onto the backlog
+above. Captured here so the priority of the existing items is
+data-driven rather than speculative.
+
+| Finding | Backlog item it maps to | Empirical weight |
+|---|---|---|
+| **F1**: Memorial-Updater outputs uncommitted at cluster pipeline end | **A7** (new) | Highest. Caused ~10 min of recovery work per wave; 4 cluster outputs (Reviewer report, Round summary, MEMORIAL appends, CLAUDE.md REINFORCED appends, NEXT-ROLE.md final state) had to be manually committed in each worktree then cherry-picked onto main with union-merge resolution. |
+| **F2**: `multi-track-verify-wave-merge.sh` uses pre-merge diff semantics post-merge | **A8** (new) | Medium. Verifier returned PASS with misleading "no CONFIRMATION/VIOLATION lines added" warnings — operator could plausibly trust PASS without realizing the check was inert. Independent sanity check on main revealed all 4 Reviewer reports were missing. |
+| **F3**: Manual conflict resolution on 5 distinct conflict types per merge | **A6** (existing) | High. Per-merge cost of manual resolution scales with wave size. Validated patterns:<br/>• Trivial / role-stamp area → take theirs<br/>• Append-only files (MEMORIAL.md) → awk strip-markers union<br/>• Whole-file rewrites (NEXT-ROLE.md, PRD.md) → take theirs<br/>• Parallel schema additions to a shared model (prisma/schema.prisma Firm) → manual Edit, harmonize alignment + union relations<br/>• Constants list (audit-events.ts) → awk union worked clean.<br/>Custom merge driver in A6 covers append-only files; the schema/code cases probably need a "sentinel-comment region" convention for parallel additions to a shared file. Worth a sub-task under A6. |
+| **F4**: Tier-name CLI drift (T0/T1/T3 in project, solo/audit/full in canonical/scopes) | **A4** (existing) | Medium. Operator had to mentally translate `--tier audit` → `--tier T1` at every dispatch. Error-prone. The existing A4 captures this cleanly. |
+| **F5**: `.pipeline-RNN.lock` files committed by Implementer, deletions not committed | **A9** (new) | Low. Cosmetic — adds untracked deletion noise to each cluster worktree. Easy fix (gitignore line). |
+
+### Pattern observed but not in backlog
+
+**Same wall-clock-second migration timestamps** (R41 + R43 both at
+`20260514120000`) — Prisma applied them in lexicographic order without
+issue because the schemas were disjoint, validating the D5-contention
+path in skills/12. If a project's wave had migrations writing to the
+same schema surface AND identical timestamps, this could collide.
+Lock primitive (existing C4) is the right place to address.
+
+### Methodology learning yield from Wave 1
+
+18 new REINFORCED lines added to ArchFolio CLAUDE.md (R40: 5, R41: 3,
+R42: 4, R43: 6). 124 new CONFIRMATION/VIOLATION entries across the 4
+clusters. The 4-way parallel dispatch surfaced more discipline gaps in
+a single wave than several recent serial rounds combined — early
+evidence that multi-track functions as a methodology stress-test
+independent of its wall-clock benefit.
 
 ---
 
