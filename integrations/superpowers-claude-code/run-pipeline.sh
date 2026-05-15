@@ -77,6 +77,15 @@ MODEL_REVIEWER="claude-opus-4-7"
 MODEL_MEMORIAL="claude-sonnet-4-6"
 MODEL_DEFAULT="claude-sonnet-4-6"
 
+# Hybrid Reviewer: when HYBRID_REVIEWER=true AND tier=audit, the Reviewer stage
+# dispatches Opus + Sonnet in parallel, then runs a merger to deduplicate.
+# Evidence base: coordination/EVAL-SONNET-REVIEWER-2026-05-15.md (Sonnet catches
+# procedural violations Opus missed; Opus catches AC-literal narrowings Sonnet
+# missed — complementary biases). Cost +20% vs Opus-only; coverage union of both.
+HYBRID_REVIEWER=${HYBRID_REVIEWER:-false}
+MODEL_REVIEWER_SECONDARY="claude-sonnet-4-6"
+MODEL_REVIEWER_MERGER="claude-sonnet-4-6"
+
 # Retry / rate limit
 MAX_RETRIES=3
 RETRY_BASE_SLEEP=30     # seconds; doubles each retry
@@ -88,6 +97,7 @@ RATE_LIMIT_SLEEP=120    # seconds to wait on 429 / quota errors
 BUDGET_ARCHITECT=60
 BUDGET_IMPLEMENTER=120
 BUDGET_REVIEWER=60
+BUDGET_REVIEWER_MERGER=30
 BUDGET_MEMORIAL=30
 
 # Populated by detect_claude_flags()
@@ -777,7 +787,43 @@ PROMPT
 }
 
 build_reviewer_prompt() {
-  cat > "$COORD/.prompt-reviewer.md" << PROMPT
+  # In hybrid mode, this is called twice with tag="opus" and tag="sonnet" — each
+  # writes to its own prompt file + targets its own output report path. The
+  # merger consolidates afterward and is the sole writer of NEXT-ROLE.md +
+  # MEMORIAL.md. In single-reviewer mode (default), tag is "" and behavior is
+  # backward-compatible: one prompt file, canonical output path, full routing.
+  local tag="${1:-}"
+  local prompt_file
+  local report_path
+  local routing_block
+  if [[ -n "$tag" ]]; then
+    prompt_file="$COORD/.prompt-reviewer-${tag}.md"
+    report_path="coordination/reviews/REVIEWER-REPORT-${ROUND}-${tag}.md"
+    routing_block="Routing in HYBRID MODE — IMPORTANT:
+A parallel Reviewer (different model) is running concurrently. You are ONE OF
+TWO independent reviewers. Do NOT update coordination/NEXT-ROLE.md and do NOT
+append to coordination/MEMORIAL.md. The merger step that follows reads both
+per-model reports and produces the canonical REVIEWER-REPORT-${ROUND}.md plus
+the NEXT-ROLE.md + MEMORIAL.md updates.
+
+Stay in your lane: write ONLY your report at the path above. Do not commit.
+Do not modify any file other than your report.
+
+ROLE BOUNDARY: Document findings. Do not fix. Do not re-implement."
+  else
+    prompt_file="$COORD/.prompt-reviewer.md"
+    report_path="coordination/reviews/REVIEWER-REPORT-${ROUND}.md"
+    routing_block="Routing:
+  CRITICAL exists → STATUS: ESCALATE
+  MAJOR or below  → STATUS: MERGE-READY
+Update coordination/NEXT-ROLE.md accordingly.
+List your report path in the Inputs section.
+Append CONFIRMATION/VIOLATION entries to coordination/MEMORIAL.md.
+
+ROLE BOUNDARY: Document findings. Do not fix. Do not re-implement."
+  fi
+
+  cat > "$prompt_file" << PROMPT
 You are the REVIEWER for round $ROUND.
 
 Read ALL of these before writing a single word of your report:
@@ -801,7 +847,7 @@ Adversarial is not hostile — it is thorough and independent.
 
 $SP_REVIEW
 
-Deliverable: coordination/reviews/REVIEWER-REPORT-${ROUND}.md
+Deliverable: $report_path
 
 Required sections:
 
@@ -837,14 +883,85 @@ Required sections:
    - Right-reasons audit completed for 3+ tests? [yes/no]
    Fix any "no" before routing.
 
-Routing:
-  CRITICAL exists → STATUS: ESCALATE
-  MAJOR or below  → STATUS: MERGE-READY
-Update coordination/NEXT-ROLE.md accordingly.
-List your report path in the Inputs section.
-Append CONFIRMATION/VIOLATION entries to coordination/MEMORIAL.md.
+${routing_block}
+PROMPT
+}
 
-ROLE BOUNDARY: Document findings. Do not fix. Do not re-implement.
+# Merger for hybrid Reviewer mode. Reads the two per-model reports, dedupes,
+# verifies suspect findings against actual code, produces the canonical
+# REVIEWER-REPORT-RNN.md + updates NEXT-ROLE.md + appends MEMORIAL.md.
+# Sonnet model is sufficient — this is aggregation work, not novel reasoning.
+build_reviewer_merger_prompt() {
+  cat > "$COORD/.prompt-reviewer-merge.md" << PROMPT
+You are the REVIEWER-MERGER for round $ROUND.
+
+Two parallel Reviewers (Opus + Sonnet) produced independent reports against
+the same code state. Merge them into one canonical report.
+
+READ:
+  - coordination/reviews/REVIEWER-REPORT-${ROUND}-opus.md
+  - coordination/reviews/REVIEWER-REPORT-${ROUND}-sonnet.md
+  - coordination/specs/Q-${ROUND}-SPEC.md
+  - Any file:line referenced by either report that you need to verify
+    (re-read the actual code/test to confirm the finding is real)
+
+MERGE RULES (apply in order):
+
+1. UNION: if either reviewer caught a finding, keep it.
+
+2. DEDUPLICATE: if both reviewers caught the same issue (same file:line
+   OR same semantic concern), keep ONE merged finding tagged "[both]"
+   with combined evidence from each.
+
+3. TAG provenance: every finding ends with a marker:
+     [opus]   — caught only by Opus
+     [sonnet] — caught only by Sonnet
+     [both]   — caught by both
+
+4. VERIFY low-confidence singletons. For any finding flagged by ONLY one
+   reviewer where the claim seems doubtful (e.g., disagrees with what
+   the other reviewer found, or makes a strong structural claim about a
+   file), open the named file:line and confirm. If the finding is wrong,
+   move it to a "FALSE POSITIVES (from per-model reports, verified incorrect)"
+   section at the bottom — DO NOT silently drop it. Explain why it was
+   incorrect. Both reviewers' reputations need this audit trail.
+
+5. RE-NUMBER MAJOR/MINOR/OBS sequentially in the merged report
+   (MAJOR-1, MAJOR-2, ...). Preserve original numbering only inside
+   each finding body for traceability.
+
+6. PRESERVE per-AC verification table: union of both reviewers' tables.
+   If they disagree on a status (PASS vs FAIL vs PARTIAL), the MORE
+   SEVERE verdict wins; mention the disagreement briefly.
+
+DELIVERABLE: coordination/reviews/REVIEWER-REPORT-${ROUND}.md
+
+Structure of the merged report:
+  # REVIEWER REPORT — ${ROUND} (hybrid merger of Opus + Sonnet)
+  ## 1. Per-AC verification (union; severity-max on disagreement)
+  ## 2. Findings (re-numbered; each tagged [opus]/[sonnet]/[both])
+       ### CRITICAL
+       ### MAJOR
+       ### MINOR
+       ### OBS
+  ## 3. Right-reasons audit (union of both reviewers' picks; dedupe overlap)
+  ## 4. Cross-cutting checks (synthesize both)
+  ## 5. False positives (verified incorrect from one model; with reason)
+  ## 6. Routing decision
+  ## 7. Merger notes (cost/coverage observations; cite which model caught
+       which class of issue — feeds future calibration)
+
+Routing rule (UNCHANGED):
+  Any CRITICAL exists → STATUS: ESCALATE
+  Otherwise           → STATUS: MERGE-READY
+Update coordination/NEXT-ROLE.md accordingly.
+Append CONFIRMATION/VIOLATION entries to coordination/MEMORIAL.md
+(synthesize from both reviewers' findings; do NOT double-count [both]
+items as separate violations).
+
+ROLE BOUNDARY: Merge and verify. Do not introduce findings neither reviewer
+flagged unless your verification turned up a clear bug while reading code
+for §4 — and tag any such finding [merger-verified] with reasoning.
 PROMPT
 }
 
@@ -912,7 +1029,9 @@ get_model() {
   case "$1" in
     ARCHITECT)        echo "$MODEL_ARCHITECT" ;;
     IMPLEMENTER)      echo "$MODEL_IMPLEMENTER" ;;
-    REVIEWER)         echo "$MODEL_REVIEWER" ;;
+    REVIEWER|REVIEWER-OPUS) echo "$MODEL_REVIEWER" ;;
+    REVIEWER-SONNET)  echo "$MODEL_REVIEWER_SECONDARY" ;;
+    REVIEWER-MERGE)   echo "$MODEL_REVIEWER_MERGER" ;;
     MEMORIAL-UPDATER) echo "$MODEL_MEMORIAL" ;;
     *)                echo "$MODEL_DEFAULT" ;;
   esac
@@ -922,10 +1041,51 @@ get_budget() {
   case "$1" in
     ARCHITECT)        echo "$BUDGET_ARCHITECT" ;;
     IMPLEMENTER)      echo "$BUDGET_IMPLEMENTER" ;;
-    REVIEWER)         echo "$BUDGET_REVIEWER" ;;
+    REVIEWER|REVIEWER-OPUS|REVIEWER-SONNET) echo "$BUDGET_REVIEWER" ;;
+    REVIEWER-MERGE)   echo "$BUDGET_REVIEWER_MERGER" ;;
     MEMORIAL-UPDATER) echo "$BUDGET_MEMORIAL" ;;
     *)                echo "40" ;;
   esac
+}
+
+# Hybrid Reviewer dispatch: parallel Opus + Sonnet → merger.
+# See coordination/HYBRID-REVIEWER-DESIGN.md and EVAL-SONNET-REVIEWER-2026-05-15.md.
+dispatch_hybrid_reviewer() {
+  log_section "HYBRID REVIEWER — dispatching Opus + Sonnet in parallel"
+
+  build_reviewer_prompt opus
+  build_reviewer_prompt sonnet
+
+  # Background-dispatch both per-model Reviewers
+  ( run_role REVIEWER-OPUS   "$COORD/.prompt-reviewer-opus.md"   "$(get_model REVIEWER-OPUS)"   "$(get_budget REVIEWER-OPUS)" ) &
+  local pid_opus=$!
+  ( run_role REVIEWER-SONNET "$COORD/.prompt-reviewer-sonnet.md" "$(get_model REVIEWER-SONNET)" "$(get_budget REVIEWER-SONNET)" ) &
+  local pid_sonnet=$!
+
+  log "Waiting for parallel Reviewers (opus pid=$pid_opus, sonnet pid=$pid_sonnet)..."
+
+  local exit_opus exit_sonnet
+  wait "$pid_opus"; exit_opus=$?
+  wait "$pid_sonnet"; exit_sonnet=$?
+
+  log "Opus exit=$exit_opus, Sonnet exit=$exit_sonnet"
+
+  if [[ $exit_opus -ne 0 ]]; then
+    log_error "Opus Reviewer failed (exit $exit_opus). Aborting hybrid; check $LOG_DIR/REVIEWER-OPUS-${ROUND}.log"
+    return 1
+  fi
+  if [[ $exit_sonnet -ne 0 ]]; then
+    log_warn "Sonnet Reviewer failed (exit $exit_sonnet). Continuing with Opus-only fallback; merger will skip sonnet input."
+    # Fallback: copy Opus report to canonical position; skip merger
+    cp "coordination/reviews/REVIEWER-REPORT-${ROUND}-opus.md" "coordination/reviews/REVIEWER-REPORT-${ROUND}.md"
+    log_warn "Hybrid degraded to single-Reviewer (Opus) for $ROUND. Sonnet log: $LOG_DIR/REVIEWER-SONNET-${ROUND}.log"
+    return 0
+  fi
+
+  log_section "REVIEWER-MERGER — consolidating Opus + Sonnet reports"
+  build_reviewer_merger_prompt
+  run_role REVIEWER-MERGE "$COORD/.prompt-reviewer-merge.md" \
+    "$(get_model REVIEWER-MERGE)" "$(get_budget REVIEWER-MERGE)"
 }
 
 # ── Memorial-Updater output commit (A7) ──────────────────────────────────────
@@ -981,19 +1141,29 @@ run_role() {
 
   log_section "ROLE: $role | MODEL: $model | ROUND: $ROUND"
 
-  # Stamp role and round into CLAUDE.md before the session opens.
-  # Each session reads a fresh CLAUDE.md — this is what achieves role identity
-  # without relying on conversation history.
-  sed -i.bak \
-    -e "s/^# THIS SESSION ROLE:.*/# THIS SESSION ROLE: $role/" \
-    -e "s/^# Round:.*/# Round: $ROUND/" \
-    "$PROJECT_ROOT/CLAUDE.md"
-  rm -f "$PROJECT_ROOT/CLAUDE.md.bak"
+  # Write role and round into a per-invocation stamp file (mktemp, ephemeral).
+  # Keeping CLAUDE.md byte-identical across worktrees lets Anthropic's prompt
+  # cache hit cross-cluster, cutting per-role-session input cost dramatically.
+  # The stamp is appended after CLAUDE.md in the system prompt so role identity
+  # is still visible to the session.
+  # mktemp is critical for hybrid-Reviewer mode where two run_role calls
+  # execute in parallel — a static path would race.
+  local stamp_file
+  stamp_file=$(mktemp -t "claude-role-stamp-${role}.XXXXXX")
+  cat > "$stamp_file" <<EOF
+# ── ROLE-STAMP ────────────────────────────────────────────────────────────────
+# THIS SESSION ROLE: $role
+# Round: $ROUND
+EOF
+  # Ensure cleanup even on early returns/errors
+  # shellcheck disable=SC2064
+  trap "rm -f '$stamp_file'" RETURN
 
   if $DRY_RUN; then
     log "[DRY-RUN] claude -p <$(wc -l < "$prompt_file") line prompt>"
     log "[DRY-RUN] flags: ${PERMISSION_FLAG[*]} --model $model --max-turns $budget"
-    log "[DRY-RUN] --append-system-prompt: CLAUDE.md ($(wc -l < "$PROJECT_ROOT/CLAUDE.md") lines)"
+    log "[DRY-RUN] --append-system-prompt: CLAUDE.md ($(wc -l < "$PROJECT_ROOT/CLAUDE.md") lines) + .role-stamp"
+    log "[DRY-RUN] --exclude-dynamic-system-prompt-sections: on"
     return 0
   fi
 
@@ -1012,10 +1182,18 @@ run_role() {
     $BUDGET_FLAG_SUPPORTED && \
       flags+=("--max-turns" "$budget")
 
-    # Append CLAUDE.md as system prompt addition.
+    # Append CLAUDE.md + role-stamp as system prompt addition.
     # --append-system-prompt preserves Claude Code's built-in capabilities
     # and adds our role + discipline definitions on top.
-    flags+=("--append-system-prompt" "$(cat "$PROJECT_ROOT/CLAUDE.md")")
+    # CLAUDE.md is stable across worktrees → prompt-cache prefix hits.
+    # .role-stamp varies per session and goes AFTER, so the cacheable prefix
+    # remains intact.
+    flags+=("--append-system-prompt" "$(cat "$PROJECT_ROOT/CLAUDE.md" "$stamp_file")")
+
+    # --exclude-dynamic-system-prompt-sections moves per-machine drift
+    # (cwd, env, git status) out of the cached system-prompt prefix so it
+    # doesn't bust the cache across workspaces. Anthropic-recommended.
+    flags+=("--exclude-dynamic-system-prompt-sections")
 
     # Run and capture exit code through tee correctly.
     # Plain $? after a pipe captures the pipe's (tee's) exit code.
@@ -1215,6 +1393,17 @@ run_preflight
 
 for role in "${ROLES[@]}"; do
   should_run "$role" || continue
+
+  # Hybrid Reviewer special case: dispatch Opus + Sonnet in parallel + merger.
+  # Only applies to audit-tier (full-tier already has Architect as the second
+  # set of eyes; hybridizing Reviewer there is over-engineering).
+  if [[ "$role" == "REVIEWER" ]] && $HYBRID_REVIEWER && [[ "$TIER" == "audit" ]]; then
+    if ! dispatch_hybrid_reviewer; then
+      log_error "Hybrid Reviewer dispatch failed for $ROUND. Pipeline aborting before Memorial-Updater."
+      exit 1
+    fi
+    continue
+  fi
 
   case "$role" in
     ARCHITECT)        build_architect_prompt ;;

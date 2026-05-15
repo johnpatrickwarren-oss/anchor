@@ -1,17 +1,19 @@
 # [PROJECT NAME — replace this line]
-# THIS SESSION ROLE: ARCHITECT
-# Round: R01
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HOW THIS FILE WORKS
 #
-# The pipeline script (run-pipeline.sh) stamps the role and round above before
-# each session opens. You never edit those lines manually during a run.
+# The pipeline script (run-pipeline.sh) writes the active role and round into
+# coordination/.role-stamp (gitignored) and appends that file to the system
+# prompt alongside this one. Keeping the stamp out of CLAUDE.md keeps this
+# file's content identical across worktrees, enabling cross-cluster prompt
+# cache reuse. You never edit the stamp manually during a run.
 #
 # The Memorial Updater appends reinforcement lines to this file after each round.
 # Those reinforcements accumulate over time — do not delete them.
 #
 # To start a new project: cp CLAUDE.md.template CLAUDE.md, fill in project name.
+# Add coordination/.role-stamp to .gitignore.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── SUPERPOWERS DISCIPLINES (inlined) ─────────────────────────────────────────
@@ -65,7 +67,8 @@ Before emitting any artifact to the next role:
 # ── UNIVERSAL DISCIPLINES (all roles) ─────────────────────────────────────────
 
 ## Role identity
-Your role is set at the top of this file by the pipeline.
+Your role is set in the ROLE-STAMP block appended to the system prompt by
+the pipeline (sourced from coordination/.role-stamp).
 NEVER infer or claim your role from conversation context or prior messages.
 NEVER write "THIS session = X" in any shared coordination file.
 If uncertain of your role: stop, write an escalation, do not assume.
