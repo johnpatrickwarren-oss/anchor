@@ -52,7 +52,7 @@ file and opens the next session accordingly. The human TPM is replaced for
 mechanical routing decisions; they remain present for escalations, which require
 judgment rather than verification.
 
-### Why Superpowers disciplines are inlined in CLAUDE.md
+### Why Superpowers disciplines are inlined, and why the file is split per role
 
 Superpowers' MCP plugin provides `/brainstorm`, `/execute-plan`, and related
 slash commands in interactive Claude Code sessions. In headless sessions (the `-p`
@@ -60,10 +60,38 @@ flag used by the pipeline), MCP tools may not load.
 
 Rather than depending on MCP availability in headless mode, the four Superpowers
 discipline phases (brainstorm → design → execute → review) are inlined directly
-into `CLAUDE.md` as explicit prose instructions. In interactive sessions,
+into the discipline files as explicit prose instructions. In interactive sessions,
 Superpowers' MCP augments these with structured skill invocation. In headless
 sessions, the inlined disciplines fire from the system prompt directly. The two
 compose without conflict.
+
+The discipline content is split across six files rather than a monolithic
+`CLAUDE.md`:
+
+- `CLAUDE-COMMON.md` — universal disciplines + Superpowers + tier rubric.
+  Loaded for every role.
+- `CLAUDE-ARCHITECT.md`, `CLAUDE-IMPLEMENTER.md`, `CLAUDE-REVIEWER.md`,
+  `CLAUDE-MEMORIAL.md` — one per role; each has its own REINFORCEMENTS section
+  that the Memorial Updater appends to when a violation in that role surfaces.
+- `CLAUDE.md` — slim interactive-session loader. Interactive Claude Code sessions
+  auto-load this from the working directory; the headless pipeline does not.
+
+The pipeline assembles each session's system prompt from `CLAUDE-COMMON.md` +
+the matching `CLAUDE-<ROLE>.md` + an ephemeral role-stamp. Two benefits:
+
+1. **Per-session prompt weight is roughly halved.** Each role no longer loads
+   the other three role blocks. The Reviewer drops the most (~38%), since the
+   Architect + Implementer + Memorial blocks were the bulk of what it had been
+   carrying unused.
+2. **REINFORCEMENTS scale per role, not globally.** A noisy Implementer doesn't
+   bloat the Architect's per-session weight. Reinforcements that apply across
+   roles still go into `CLAUDE-COMMON.md` and are loaded everywhere.
+
+Long-term reinforcement growth is managed by an operator-triggered archive
+script (`scripts/consolidate-reinforcements.sh`) that moves REINFORCED lines
+older than a cutoff out of the live files and into a dated archive under
+`coordination/reinforcements-archive/`. The Memorial Updater nudges the operator
+to run it when any file passes a threshold (default: > 30 REINFORCED lines).
 
 ### Why Opus 4.7 for Architect and Reviewer, Sonnet for Implementer and Memorial
 
@@ -86,16 +114,22 @@ while reducing total pipeline cost significantly.
 
 ```
 integrations/superpowers-claude-code/
-├── README.md                    # This file
-├── MULTI-TRACK-RUNBOOK.md       # Operator runbook for multi-cluster parallel waves
-├── run-pipeline.sh              # Pipeline orchestrator (single-track / per-cluster)
-├── new-project.sh               # Project scaffolding script
-├── CLAUDE.md.template           # Role definitions and inlined Superpowers disciplines
-├── finalize-round.sh            # One-command round-close (SHA-A attestation)
-├── anchor-update-project.sh     # Sync project's run-pipeline.sh from canonical
+├── README.md                       # This file
+├── MULTI-TRACK-RUNBOOK.md          # Operator runbook for multi-cluster parallel waves
+├── run-pipeline.sh                 # Pipeline orchestrator (single-track / per-cluster)
+├── new-project.sh                  # Project scaffolding script (copies all 6 templates)
+├── CLAUDE.md.template              # Slim interactive-session loader
+├── CLAUDE-COMMON.md.template       # Universal disciplines + Superpowers + tier rubric
+├── CLAUDE-ARCHITECT.md.template    # Architect role block + REINFORCEMENTS slot
+├── CLAUDE-IMPLEMENTER.md.template  # Implementer role block + REINFORCEMENTS slot
+├── CLAUDE-REVIEWER.md.template     # Reviewer role block + REINFORCEMENTS slot
+├── CLAUDE-MEMORIAL.md.template     # Memorial Updater role block + REINFORCEMENTS slot
+├── finalize-round.sh               # One-command round-close (SHA-A attestation)
+├── anchor-update-project.sh        # Sync project's run-pipeline.sh from canonical
 └── scripts/
     ├── anchor-round-close.sh               # Commit a round's Memorial-Updater outputs (single-track + multi-track manual fallback)
     ├── anchor-wave-init.sh                 # Bring an existing project to multi-track readiness (idempotent)
+    ├── consolidate-reinforcements.sh       # Archive aged REINFORCED lines from CLAUDE-*.md files
     ├── multi-track-cluster-setup.sh        # Create a worktree for one cluster in a wave
     └── multi-track-verify-wave-merge.sh    # Post-merge correctness check after wave aggregation
 ```

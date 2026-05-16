@@ -2,13 +2,13 @@
 # =============================================================================
 # finalize-round.sh — one-command round-close for the Anchor pipeline
 #
-# Implements the two-commit SHA-attestation sequence from CLAUDE.md.template's
+# Implements the two-commit SHA-attestation sequence from CLAUDE-IMPLEMENTER.md.template's
 # IMPLEMENTER "On clean completion" steps (the R15 reinforcement, mechanically
 # realized):
 #
 #   1. Run all binding commands; abort on failure.
 #   2. Verify source/test/schema directories have no uncommitted changes.
-#   3. Commit coordination artifacts (coordination/ + CLAUDE.md) → SHA-A.
+#   3. Commit coordination artifacts (coordination/ + CLAUDE-*.md) → SHA-A.
 #   4. Record SHA-A in NEXT-ROLE.md.
 #   5. Commit the SHA-A recording → HEAD.
 #   6. Integrity-check: no source/test/schema changes between SHA-A and HEAD.
@@ -126,16 +126,20 @@ echo ""
 # ── Step 3: Commit coordination artifacts → SHA-A ────────────────────────────
 echo "--- Step 3/6: Committing coordination artifacts ---"
 
-STAGED_CHANGES=$(git diff HEAD -- coordination/ CLAUDE.md 2>/dev/null || true)
-UNSTAGED_CHANGES=$(git status --porcelain coordination/ CLAUDE.md 2>/dev/null | grep -v "^??" || true)
+# Stage coordination/ plus every CLAUDE-*.md file (each role's REINFORCEMENTS
+# section is a possible target of this round's Memorial Updater).
+CLAUDE_PATHS=(CLAUDE.md CLAUDE-COMMON.md CLAUDE-ARCHITECT.md CLAUDE-IMPLEMENTER.md \
+              CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md)
+STAGED_CHANGES=$(git diff HEAD -- coordination/ "${CLAUDE_PATHS[@]}" 2>/dev/null || true)
+UNSTAGED_CHANGES=$(git status --porcelain coordination/ "${CLAUDE_PATHS[@]}" 2>/dev/null | grep -v "^??" || true)
 
 if [[ -z "$STAGED_CHANGES" && -z "$UNSTAGED_CHANGES" ]] && \
-   git diff --cached --quiet coordination/ CLAUDE.md 2>/dev/null; then
-  echo "Nothing to commit in coordination/ or CLAUDE.md."
+   git diff --cached --quiet coordination/ "${CLAUDE_PATHS[@]}" 2>/dev/null; then
+  echo "Nothing to commit in coordination/ or CLAUDE-*.md."
   echo "SHA-A will be current HEAD."
   SHA_A=$(git rev-parse HEAD)
 else
-  git add coordination/ CLAUDE.md
+  git add coordination/ "${CLAUDE_PATHS[@]}" 2>/dev/null || true
   if git diff --cached --quiet; then
     echo "Nothing staged after git add. SHA-A = current HEAD."
     SHA_A=$(git rev-parse HEAD)

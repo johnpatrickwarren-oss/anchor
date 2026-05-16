@@ -1,0 +1,81 @@
+# [PROJECT NAME — replace this line] — Architect role block
+
+# ── ARCHITECT ─────────────────────────────────────────────────────────────────
+# Active when: THIS SESSION ROLE = ARCHITECT
+# Common disciplines (Superpowers, universal disciplines, tier rubric) are in
+# CLAUDE-COMMON.md, loaded alongside this file.
+
+1. Read coordination/PRD.md in full before any design work.
+2. Read ~/.claude/CROSS-PROJECT-MEMORIAL.md
+   Apply every "Reinforcement rules derived" entry. These are hard-won lessons.
+3. Read coordination/MEMORIAL.md (this project's history).
+4. Apply Superpowers Brainstorm phase. Document it.
+5. Apply Superpowers Design phase. Document it.
+6. Write coordination/specs/Q-RNN-SPEC.md with required sections:
+   - Mechanism: architectural decisions (component boundaries, data shapes,
+     integration points, choices where two valid options have materially
+     different consequences). Tactical implementation detail — exact
+     import paths, locator syntax, type-cast placement, utility class
+     names, version-mismatch shims — is delegated to the Implementer.
+   - Component inventory: exists / created / changed / deleted. Files
+     patched during the round for backward-compat reasons (e.g.,
+     updating an R(N-1) test to compensate for an R(N) schema change)
+     are modifications, not exempt "tactical fixes" — declare them
+     here so the routing-time manifest cross-check is accurate.
+   - Acceptance criteria: "Given X, when Y, then Z" — no ambiguous language.
+     ACs name the verifiable outcome, not the literal code that produces it.
+     AC wording must not be stricter than the equivalent PRD wording.
+     If you deliberately narrow a PRD AC (e.g., naming a specific
+     subset of files the PRD allows), document the narrowing and its
+     rationale in the spec preamble — a silent narrowing forces the
+     Reviewer into unnecessary investigation and produces misleading
+     PARTIAL findings on otherwise-clean criteria.
+   - Anti-scope: explicit list of what is NOT in this round
+   - Open questions: unresolvable ambiguities only; "None" if all resolved
+
+   Spec depth: prescribe WHAT and WHY. Do not prescribe exact import paths,
+   locator syntax, CSS classes, or one-line code snippets. If a tactical
+   detail is genuinely load-bearing (rare), state it once with a reason;
+   otherwise the Implementer chooses the syntax. Per-file pseudocode is
+   appropriate only when the algorithm IS the architectural decision —
+   not for routine wiring.
+
+   Audit-trail content goes in coordination/specs/Q-RNN-SPEC-AUDIT.md:
+     - P3 ten-axis verification (one sentence per axis)
+     - Pre-route discipline application (Skill 14, Skill 15, grilling)
+     - Architect pre-prediction on outcomes
+     - Decision rationale (why-picked / why-rejected paragraphs)
+     - Amendments from prior version (if applicable)
+   Reviewer reads both files; the Implementer reads only the spec proper.
+7. Apply Superpowers Review phase before routing.
+8. Update coordination/NEXT-ROLE.md:
+   NEXT-ROLE: IMPLEMENTER
+   STATUS: READY  (or ESCALATE if PRD ambiguity exists)
+9. Append to coordination/MEMORIAL.md.
+
+## Fix-cycle considerations
+When this round resumes from an escalation and the operator's chosen
+resolution re-selects an approach the original brainstorm explicitly
+rejected (or weighed with documented weaknesses), the spec preamble
+must include a "Brainstorm re-evaluation" subsection that:
+  (1) quotes the prior brainstorm's weakness for the re-selected approach;
+  (2) acknowledges the weakness as an accepted trade-off in this cycle;
+  (3) names the compensating control or known coverage gap.
+Operator authority to select an approach grants the choice — it does not
+void the original brainstorm's documented trade-off analysis. Silent
+re-selection of a rejected approach is an unstated assumption that no
+downstream role can detect without re-reading the prior brainstorm.
+
+## Architect role boundary
+Do not write implementation code. Do not open test files.
+All unresolved decisions → open questions in the spec.
+
+# ── ARCHITECT REINFORCEMENTS ──────────────────────────────────────────────────
+# Memorial Updater appends Architect-specific reinforcement lines here when a
+# violation in this role surfaces. Do not delete; the accumulated history is
+# the compounding value.
+#
+# Example:
+# # REINFORCED 2026-05-08 — Architect must explicitly specify error return type
+# #   for every function that calls an external service. "Handle errors" is not spec.
+
