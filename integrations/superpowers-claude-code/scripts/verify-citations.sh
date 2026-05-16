@@ -112,12 +112,17 @@ fi
 #
 # Tolerates extra whitespace; rejects rows where any of the first three
 # columns (file, SHA, lines) is empty or "TBD"/"<...>".
+#
+# Section-header match is flexible: matches `## Existing architectural
+# surface` as a heading-substring, allowing numbered headings like
+# `## 1.6 Existing architectural surface` at reduced-fidelity templates
+# (SCOPE-PROPOSAL where section numbering is project-specific).
 
-section_pattern="## Existing architectural surface"
+section_pattern="Existing architectural surface"
 
-if ! grep -q "$section_pattern" "$spec_file"; then
+if ! grep -qE "^## .*${section_pattern}" "$spec_file"; then
   echo "ERROR: spec does not contain the mandatory section:" >&2
-  echo "       '$section_pattern (REVIEWER-ANCHOR)'" >&2
+  echo "       '## ... Existing architectural surface (REVIEWER-ANCHOR)'" >&2
   echo "" >&2
   echo "       Add the section per anchor templates/Q-NN-SPEC-TEMPLATE.md." >&2
   exit 1
@@ -125,7 +130,7 @@ fi
 
 # Extract lines after the section header until the next ## header.
 section_body="$(awk -v pat="$section_pattern" '
-  $0 ~ pat { in_section = 1; next }
+  /^## / && $0 ~ pat { in_section = 1; next }
   in_section && /^## / { exit }
   in_section { print }
 ' "$spec_file")"
