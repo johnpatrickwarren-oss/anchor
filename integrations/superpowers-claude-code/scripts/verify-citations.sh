@@ -135,6 +135,20 @@ section_body="$(awk -v pat="$section_pattern" '
 rows="$(echo "$section_body" | awk -F'|' '
   /^\|/ && NF >= 6 {
     file = $2; sha = $3; lines = $4; snippet = $5; ts = $6;
+    # Strip leading/trailing whitespace.
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", file);
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", sha);
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", lines);
+    # Strip markdown emphasis (backticks, asterisks, underscores at the
+    # boundary). Tables commonly wrap inline values like `path/to/file`
+    # or `abc1234` in backticks for rendering; we want the bare values.
+    gsub(/`/, "", file);
+    gsub(/`/, "", sha);
+    gsub(/`/, "", lines);
+    gsub(/\*\*/, "", file);
+    gsub(/\*\*/, "", sha);
+    gsub(/\*\*/, "", lines);
+    # Re-trim after stripping (markdown could leave inner whitespace).
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", file);
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", sha);
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", lines);
@@ -150,6 +164,11 @@ rows="$(echo "$section_body" | awk -F'|' '
   }
 ')"
 
+# Detect repo-root basename for prefix-stripping. Common pattern:
+# specs from project X cite project Y's files as "Y/path/to/file" for
+# reader clarity, but git cat-file inside Y needs bare "path/to/file".
+repo_basename="$(basename "$repo_root")"
+
 if [[ -z "$rows" ]]; then
   echo "WARNING: section present but contains no resolvable citation rows." >&2
   echo "         Expected format:" >&2
@@ -163,21 +182,33 @@ fail_count=0
 
 while IFS=$'\t' read -r file sha lines; do
   row_count=$((row_count + 1))
+
+  # Strip repo-name prefix if present. Spec authors often write
+  # "deploysignal/engine/foo.ts" for cross-repo clarity; git cat-file
+  # inside the deploysignal repo needs "engine/foo.ts".
+  in_repo_path="$file"
+  if [[ "$in_repo_path" == "$repo_basename/"* ]]; then
+    in_repo_path="${in_repo_path#$repo_basename/}"
+  fi
+
   echo "═══════════════════════════════════════════════════════════════════"
   echo "Row $row_count: $file @ $sha (lines: $lines)"
+  if [[ "$in_repo_path" != "$file" ]]; then
+    echo "  (resolved to in-repo path: $in_repo_path)"
+  fi
   echo "───────────────────────────────────────────────────────────────────"
 
   # Verify file exists at SHA.
-  if ! git -C "$repo_root" cat-file -e "$sha:$file" 2>/dev/null; then
-    echo "  ❌ FAIL: file $file does not exist at SHA $sha in $repo_root" >&2
+  if ! git -C "$repo_root" cat-file -e "$sha:$in_repo_path" 2>/dev/null; then
+    echo "  ❌ FAIL: $in_repo_path does not exist at SHA $sha in $repo_root" >&2
     fail_count=$((fail_count + 1))
     continue
   fi
 
   # Extract file content at SHA.
-  file_content="$(git -C "$repo_root" show "$sha:$file" 2>/dev/null || true)"
+  file_content="$(git -C "$repo_root" show "$sha:$in_repo_path" 2>/dev/null || true)"
   if [[ -z "$file_content" ]]; then
-    echo "  ❌ FAIL: could not read $file at $sha" >&2
+    echo "  ❌ FAIL: could not read $in_repo_path at $sha" >&2
     fail_count=$((fail_count + 1))
     continue
   fi
