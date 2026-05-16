@@ -18,6 +18,50 @@ _Sequencing: [Phase / sub-track ordering relative to in-flight work]._
 
 ---
 
+## Existing architectural surface (REVIEWER-ANCHOR — mandatory)
+
+_Required at every spec-emit. Closes the file-opened-discipline gap (P3.3) by structural enforcement rather than declarative reminder. See [`skills/01-pre-emit-grilling.md`](../skills/01-pre-emit-grilling.md) § Existing-architectural-surface enforcement for the discipline rationale._
+
+For every inherited type, enum value, function, constant, line number, or
+behavior this spec references in § Architectural mechanism or § Implementation
+surface, enumerate explicitly:
+
+| Inherited file | Pinned SHA | Lines opened | Verbatim snippet | Date+time opened |
+|---|---|---|---|---|
+| `<repo>/<path>` | `<7-char SHA>` | `<line range, e.g. 95 or 403-421>` | `<exact text from the file at those lines>` | `YYYY-MM-DD HH:MM` |
+
+Every citation in this spec MUST appear in this table. Empty rows, placeholders
+("TBD", `<...>`), or paraphrased snippets = automatic FAIL on Reviewer audit.
+
+**Architect self-attest checklist (tick at emit time):**
+
+- [ ] I opened every file in this table at brief-drafting time
+      (NOT recalled from memory).
+- [ ] Each snippet is verbatim from the file at the pinned SHA
+      (not paraphrased; not stripped of formatting).
+- [ ] Each line number was verified against the actual file content
+      at the pinned SHA, not against a remembered prior version.
+- [ ] I ran `integrations/superpowers-claude-code/scripts/verify-citations.sh`
+      against this spec; output shows no FAIL rows.
+
+**Why this section is mandatory:** the inherited-architecture file-opened
+discipline (P3.3) accumulated TWO same-session violations in May 2026
+([`case-studies/deploysignal-coordination-trail.md`](../case-studies/deploysignal-coordination-trail.md)
+references MD-F6 sub-variant). Memorializing the discipline did not prevent
+recurrence; the declarative checklist item ("Has every cited file been
+opened?") was mentally tick-able without actually opening. This section
+converts the discipline from declarative → structural: either the table
+is present with concrete grep-evidenced citations, or the spec is
+incomplete. The script `verify-citations.sh` provides mechanical
+verification that cited line ranges resolve at the pinned SHA.
+
+If this spec doesn't cite ANY inherited primitives (rare; usually for
+greenfield projects with no shared-engine vendoring), the table may be
+empty with an explicit "N/A — greenfield project; no inherited surface"
+row inserted in place of placeholders.
+
+---
+
 ## Open questions resolved at spec-emit (Q[N].1 → Q[N].M)
 
 ### Q[N].1 — [First open question architect picks]

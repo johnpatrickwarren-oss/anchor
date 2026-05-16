@@ -42,7 +42,7 @@ For each artifact type, the grilling checklist differs slightly:
 **Architect spec drafts:**
 - Does every numerical threshold have a derivation?
 - Are option-space alternatives enumerated?
-- Has every cited file been opened (not summarized from memory)?
+- Has every cited file been opened (not summarized from memory)? **Now enforced structurally** — see § Existing-architectural-surface enforcement below.
 - Has the compiled artifact been opened, not just source?
 - Are anti-scope clauses explicit?
 
@@ -85,6 +85,18 @@ The CRITICAL was a gap in the architect spec around `parametricAr1Window` semant
 
 Approximately 10-20% additional time per artifact emit. Heavily front-loaded — first few applications take longer as you build the grilling-checklist intuition. Recovers cost within the first few catches.
 
+## Existing-architectural-surface enforcement (added 2026-05-16 post-MD-F6 second-occurrence)
+
+The file-opened checklist item ("Has every cited file been opened?") is **declaratively easy to violate**: an architect can mentally tick it without actually opening the file. The discipline-application-gap pattern was observed twice within hours in May 2026 (the originating MD-F6 case in `case-studies/` — both violations citing inherited types/enums from memory; both caught by Reviewer cold-context audit; neither caught by architect's own pre-emit grilling).
+
+**Structural fix:** [`templates/Q-NN-SPEC-TEMPLATE.md`](../templates/Q-NN-SPEC-TEMPLATE.md) now includes a mandatory `## Existing architectural surface (REVIEWER-ANCHOR)` section with a citation table requiring file path + pinned SHA + line range + verbatim snippet + date+time opened. Empty rows / placeholders / paraphrased snippets = automatic FAIL on Reviewer audit.
+
+**Mechanical verification:** [`integrations/superpowers-claude-code/scripts/verify-citations.sh`](../integrations/superpowers-claude-code/scripts/verify-citations.sh) parses the citation table, resolves each row against the cited SHA, and prints the actual file content at the cited lines for side-by-side comparison against the snippet column. Architect runs at pre-emit; Reviewer runs at audit.
+
+The combined template-section + script is the executable form of the file-opened discipline. The skill's checklist item still asks the question; the structural-and-mechanical enforcement makes "yes" verifiable rather than self-attested.
+
 ## Memorial-accretion connection
 
 Patterns of issues caught by pre-emit grilling become candidates for memorialization (see [`02-memorial-accretion.md`](./02-memorial-accretion.md)). When a CRITICAL pattern repeats across multiple artifacts, the discipline that would have prevented it becomes a new pre-route checklist item.
+
+When memorialization alone proves insufficient — as with MD-F6 (two same-session violations after memorial creation) — escalate to **template-section enforcement + script verification** rather than another memorial entry. The discipline-archive significance is that declarative memorialization caps at the architect's attention budget; structural artifact requirements + mechanical script checks have no attention dependency.
