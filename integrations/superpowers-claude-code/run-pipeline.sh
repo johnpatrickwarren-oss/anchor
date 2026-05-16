@@ -751,7 +751,8 @@ coordination/MEMORIAL.md:
 Append the same entries to $CROSS_MEMORIAL with prefix [\$(basename "$PROJECT_ROOT")].
 
 For each VIOLATION this round, append a reinforcement line to
-$PROJECT_ROOT/CLAUDE.md at the end of the IMPLEMENTER role block:
+$PROJECT_ROOT/CLAUDE-IMPLEMENTER.md in its REINFORCEMENTS section
+(cross-role / methodology lessons go in CLAUDE-COMMON.md):
   # REINFORCED [date] — [specific rule from the violation]
 
 Be specific. "Pre-emit grilling confirmed" is not useful.
@@ -764,7 +765,7 @@ Brief (≤1 page) — sections:
   ## What worked
   ## What violated discipline (if any)
   ## Tier note: chose solo because [Zn]; final diff stayed within mechanical bounds [yes/no]
-  ## Reinforcements added to CLAUDE.md this round (if any)
+  ## Reinforcements added (CLAUDE-IMPLEMENTER.md / CLAUDE-COMMON.md, line summary)
 
 STEP 6 — Routing
 
@@ -998,24 +999,42 @@ Complete all five deliverables:
      - [Specific rule: not "be careful" but "Architect must explicitly specify
        the error return type for every function that calls an external service"]
 
-3. Update $PROJECT_ROOT/CLAUDE.md
-   For every VIOLATION this round, find the relevant role block in CLAUDE.md.
-   Append at the end of that block:
+3. Update the role-specific CLAUDE-<ROLE>.md file
+   The discipline content is split per role. For every VIOLATION this round,
+   open the file matching the violating role and append to its REINFORCEMENTS
+   section:
+     Architect violation         → $PROJECT_ROOT/CLAUDE-ARCHITECT.md
+     Implementer violation       → $PROJECT_ROOT/CLAUDE-IMPLEMENTER.md
+     Reviewer violation          → $PROJECT_ROOT/CLAUDE-REVIEWER.md
+     Memorial-Updater violation  → $PROJECT_ROOT/CLAUDE-MEMORIAL.md
+     Cross-role / methodology    → $PROJECT_ROOT/CLAUDE-COMMON.md
+   Append at the end of that file's REINFORCEMENTS section:
      # REINFORCED $(date '+%Y-%m-%d') — [specific rule from the violation]
    Do not delete prior reinforcements. The cumulative history is the value.
-   If CLAUDE.md does not have a clear insertion point, add after the role's
-   last existing instruction line.
 
-4. Write coordination/logs/ROUND-${ROUND}-SUMMARY.md
+4. Consolidation check (cheap; run after appending in step 3)
+   For each CLAUDE-COMMON.md and CLAUDE-<ROLE>.md file, count REINFORCED
+   lines:
+     grep -c '^# REINFORCED ' \$f
+   If ANY file has > 30 REINFORCED lines, add a recommendation to the round
+   summary (step 5):
+     ## Recommend reinforcement consolidation
+     - CLAUDE-IMPLEMENTER.md is at <N> REINFORCED lines; run
+       \`./scripts/consolidate-reinforcements.sh\` to archive lines older
+       than 180 days. (Operator-triggered; the script does not auto-run.)
+   This is a nudge, not an action — the script stays operator-gated.
+
+5. Write coordination/logs/ROUND-${ROUND}-SUMMARY.md
    Sections:
      ## What worked
      ## What violated discipline (role, discipline, what happened)
      ## Root cause analysis (why did each violation occur — not just what)
-     ## Reinforcements added to CLAUDE.md this round
+     ## Reinforcements added (file path + line summary for each)
      ## Watch list for next round (patterns to look for)
      ## Emerging cross-project patterns (if any)
+     ## Recommend reinforcement consolidation (only if step 4 triggered)
 
-5. Update coordination/NEXT-ROLE.md
+6. Update coordination/NEXT-ROLE.md
    STATUS: ROUND-COMPLETE
    NEXT-ROLE: (operator decision)
 
@@ -1097,7 +1116,8 @@ dispatch_hybrid_reviewer() {
 # gate merge time. Auto-committing here closes that gap.
 #
 # What this typically commits:
-#   M  CLAUDE.md (REINFORCED appendings under role blocks)
+#   M  CLAUDE-<ROLE>.md (REINFORCED appendings in the matching role file)
+#   M  CLAUDE-COMMON.md (cross-role / methodology reinforcements, if any)
 #   M  coordination/MEMORIAL.md (CONFIRMATION/VIOLATION entries)
 #   M  coordination/NEXT-ROLE.md (final state, ROUND-COMPLETE status)
 #   ?? coordination/logs/ROUND-RNN-SUMMARY.md (new)
@@ -1105,15 +1125,17 @@ dispatch_hybrid_reviewer() {
 #      uncommitted, which is the current behavior)
 #
 # Does not commit:
-#   - Stray modifications outside coordination/ + CLAUDE.md (unintentional).
+#   - Stray modifications outside coordination/ + CLAUDE*.md (unintentional).
 #   - .pipeline-RNN.lock changes (gitignored per A9; if a project doesn't
 #     yet have the gitignore line, the lockfile change still lands in
 #     `git add -A coordination/` but is ignorable in audit).
 commit_memorial_outputs() {
   cd "$PROJECT_ROOT" || return 1
 
-  # Stage all coordination/ changes + any CLAUDE.md modification.
-  git add -A coordination/ CLAUDE.md 2>/dev/null || true
+  # Stage all coordination/ changes + any CLAUDE*.md modification (each role's
+  # reinforcement file is a possible target of this round's Memorial Updater).
+  git add -A coordination/ CLAUDE.md CLAUDE-COMMON.md CLAUDE-ARCHITECT.md \
+    CLAUDE-IMPLEMENTER.md CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md 2>/dev/null || true
 
   if git diff --cached --quiet 2>/dev/null; then
     log "Memorial-Updater outputs: nothing to commit (already clean)."
@@ -1142,10 +1164,10 @@ run_role() {
   log_section "ROLE: $role | MODEL: $model | ROUND: $ROUND"
 
   # Write role and round into a per-invocation stamp file (mktemp, ephemeral).
-  # Keeping CLAUDE.md byte-identical across worktrees lets Anthropic's prompt
-  # cache hit cross-cluster, cutting per-role-session input cost dramatically.
-  # The stamp is appended after CLAUDE.md in the system prompt so role identity
-  # is still visible to the session.
+  # Keeping the system-prompt prefix byte-identical across worktrees lets
+  # Anthropic's prompt cache hit cross-cluster, cutting per-role-session input
+  # cost dramatically. The stamp is appended after the discipline files so
+  # role identity is still visible to the session.
   # mktemp is critical for hybrid-Reviewer mode where two run_role calls
   # execute in parallel — a static path would race.
   local stamp_file
@@ -1159,10 +1181,24 @@ EOF
   # shellcheck disable=SC2064
   trap "rm -f '$stamp_file'" RETURN
 
+  # Resolve which CLAUDE-<ROLE>.md file pairs with this session.
+  # Hybrid-Reviewer roles + the merger all read the Reviewer block.
+  local role_claude_file
+  case "$role" in
+    ARCHITECT)        role_claude_file="$PROJECT_ROOT/CLAUDE-ARCHITECT.md" ;;
+    IMPLEMENTER)      role_claude_file="$PROJECT_ROOT/CLAUDE-IMPLEMENTER.md" ;;
+    REVIEWER|REVIEWER-OPUS|REVIEWER-SONNET|REVIEWER-MERGE)
+                      role_claude_file="$PROJECT_ROOT/CLAUDE-REVIEWER.md" ;;
+    MEMORIAL-UPDATER) role_claude_file="$PROJECT_ROOT/CLAUDE-MEMORIAL.md" ;;
+    *)
+      log_error "run_role: no CLAUDE-<ROLE>.md mapping for role '$role'"
+      return 1 ;;
+  esac
+
   if $DRY_RUN; then
     log "[DRY-RUN] claude -p <$(wc -l < "$prompt_file") line prompt>"
     log "[DRY-RUN] flags: ${PERMISSION_FLAG[*]} --model $model --max-turns $budget"
-    log "[DRY-RUN] --append-system-prompt: CLAUDE.md ($(wc -l < "$PROJECT_ROOT/CLAUDE.md") lines) + .role-stamp"
+    log "[DRY-RUN] --append-system-prompt: CLAUDE-COMMON.md ($(wc -l < "$PROJECT_ROOT/CLAUDE-COMMON.md") lines) + $(basename "$role_claude_file") ($(wc -l < "$role_claude_file") lines) + .role-stamp"
     log "[DRY-RUN] --exclude-dynamic-system-prompt-sections: on"
     return 0
   fi
@@ -1182,13 +1218,13 @@ EOF
     $BUDGET_FLAG_SUPPORTED && \
       flags+=("--max-turns" "$budget")
 
-    # Append CLAUDE.md + role-stamp as system prompt addition.
-    # --append-system-prompt preserves Claude Code's built-in capabilities
-    # and adds our role + discipline definitions on top.
-    # CLAUDE.md is stable across worktrees → prompt-cache prefix hits.
-    # .role-stamp varies per session and goes AFTER, so the cacheable prefix
-    # remains intact.
-    flags+=("--append-system-prompt" "$(cat "$PROJECT_ROOT/CLAUDE.md" "$stamp_file")")
+    # Append CLAUDE-COMMON.md + CLAUDE-<ROLE>.md + role-stamp as the system
+    # prompt addition. --append-system-prompt preserves Claude Code's built-in
+    # capabilities and adds our role + discipline definitions on top.
+    # The common + role files are stable across worktrees → prompt-cache prefix
+    # hits. .role-stamp varies per session and goes AFTER, so the cacheable
+    # prefix remains intact.
+    flags+=("--append-system-prompt" "$(cat "$PROJECT_ROOT/CLAUDE-COMMON.md" "$role_claude_file" "$stamp_file")")
 
     # --exclude-dynamic-system-prompt-sections moves per-machine drift
     # (cwd, env, git status) out of the cached system-prompt prefix so it
@@ -1276,11 +1312,20 @@ run_preflight() {
     log_error "Write your requirements first, then run the pipeline."
     exit 1
   }
-  [[ ! -f "$PROJECT_ROOT/CLAUDE.md" ]] && {
-    log_error "CLAUDE.md not found."
-    log_error "Run: cp \$(dirname \$0)/CLAUDE.md.template CLAUDE.md and fill in project name."
+  # CLAUDE.md is the interactive-session loader; the pipeline reads the split
+  # files for headless runs. Check that every required piece is present.
+  local missing_claude_files=()
+  for f in CLAUDE.md CLAUDE-COMMON.md CLAUDE-ARCHITECT.md CLAUDE-IMPLEMENTER.md \
+           CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md; do
+    [[ -f "$PROJECT_ROOT/$f" ]] || missing_claude_files+=("$f")
+  done
+  if [[ ${#missing_claude_files[@]} -gt 0 ]]; then
+    log_error "Missing discipline file(s): ${missing_claude_files[*]}"
+    log_error "Copy the matching CLAUDE-*.md template(s) from the anchor repo,"
+    log_error "or restore from a working project. The pipeline assembles each"
+    log_error "session's system prompt from CLAUDE-COMMON.md + CLAUDE-<ROLE>.md."
     exit 1
-  }
+  fi
 
   # Refuse to start if another pipeline is running this round.
   acquire_round_lock
@@ -1430,7 +1475,7 @@ case "$FINAL_STATUS" in
     log ""
     log "  Reviewer report:  coordination/reviews/REVIEWER-REPORT-${ROUND}.md"
     log "  Round summary:    coordination/logs/ROUND-${ROUND}-SUMMARY.md"
-    log "  CLAUDE.md:        check bottom section for new reinforcements"
+    log "  CLAUDE-*.md:      check per-role REINFORCEMENTS sections for new lines"
     log ""
     log "  Merge when ready, then:"
     log "  ./run-pipeline.sh --round R${NEXT_NUM}"

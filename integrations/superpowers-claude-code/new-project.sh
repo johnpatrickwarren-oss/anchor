@@ -30,12 +30,23 @@ mkdir -p coordination/logs
 mkdir -p src
 mkdir -p tests
 
-# ── CLAUDE.md ─────────────────────────────────────────────────────────────────
-cp "$TOOLKIT_DIR/CLAUDE.md.template" CLAUDE.md
-sed -i.bak "s/\[PROJECT NAME — replace this line\]/$PROJECT_NAME/" CLAUDE.md
-rm -f CLAUDE.md.bak
+# ── CLAUDE.md + per-role discipline files ────────────────────────────────────
+# Six files land per project: the slim interactive-session loader (CLAUDE.md)
+# plus the common-disciplines block (CLAUDE-COMMON.md) plus four per-role
+# blocks (CLAUDE-{ARCHITECT,IMPLEMENTER,REVIEWER,MEMORIAL}.md). The pipeline
+# assembles per-session prompts from CLAUDE-COMMON + the matching role file;
+# the slim CLAUDE.md is for interactive sessions only.
+for f in CLAUDE.md CLAUDE-COMMON.md CLAUDE-ARCHITECT.md CLAUDE-IMPLEMENTER.md \
+         CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md; do
+  cp "$TOOLKIT_DIR/${f}.template" "$f"
+  sed -i.bak "s/\[PROJECT NAME — replace this line\]/$PROJECT_NAME/" "$f"
+  rm -f "${f}.bak"
+done
 
-# Inject cross-project reinforcement rules if the memorial exists
+# Inject cross-project reinforcement rules into CLAUDE-COMMON.md (they apply
+# across all roles by definition — "Reinforcement rules derived" entries are
+# methodology-wide). Pre-split, this injection targeted CLAUDE.md; the
+# COMMON file is the right home post-split.
 if [[ -f "$CROSS_MEMORIAL" ]]; then
   REINFORCEMENTS=$(awk \
     '/^### Reinforcement rules derived/{f=1;next} f && /^###/{f=0} f && /^- /{print}' \
@@ -45,9 +56,9 @@ if [[ -f "$CROSS_MEMORIAL" ]]; then
       echo ""
       echo "# ── Inherited from cross-project memorial ($(date '+%Y-%m-%d')) ────────────────"
       echo "$REINFORCEMENTS"
-    } >> CLAUDE.md
+    } >> CLAUDE-COMMON.md
     COUNT=$(echo "$REINFORCEMENTS" | wc -l | tr -d ' ')
-    echo "  Injected $COUNT reinforcement rule(s) from cross-project memorial."
+    echo "  Injected $COUNT reinforcement rule(s) from cross-project memorial into CLAUDE-COMMON.md."
   fi
 fi
 
