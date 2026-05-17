@@ -180,8 +180,8 @@ Every Memorial Updater session appends to it. Every new project inherits its rei
 npm install -g @anthropic-ai/claude-code
 claude login
 
-# Superpowers MCP
-claude mcp add superpowers
+# Superpowers (run inside Claude Code as a slash command, NOT a shell command):
+#   /plugin install superpowers@claude-plugins-official
 
 # Anchor skills (from this repo)
 cp skills/*.md ~/.claude/skills/

@@ -13,7 +13,7 @@ in the [integration README](integrations/superpowers-claude-code/README.md).
 
 **Prerequisites:**
 - [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) — `npm install -g @anthropic-ai/claude-code` then `claude login`
-- [Superpowers](https://github.com/obra/superpowers) — `claude mcp add superpowers` (Anchor inlines Superpowers' phase disciplines, so this is recommended but not strictly required for the headless pipeline)
+- [Superpowers](https://github.com/obra/superpowers) — inside Claude Code, run the slash command `/plugin install superpowers@claude-plugins-official` (Anchor inlines Superpowers' phase disciplines, so this is recommended but not strictly required for the headless pipeline)
 - [GitHub CLI](https://cli.github.com/) — optional, for `new-project.sh` to auto-create a private repo
 
 ```bash
