@@ -64,6 +64,7 @@ PRD_PATH="$COORD/PRD.md"
 DRY_RUN=false
 MODEL_ROUTING=true
 TIER="full"
+RESET_NEXT_ROLE=false
 
 # Model routing
 # Opus 4.7: Architect (design reasoning) and Reviewer (adversarial audit)
@@ -114,6 +115,7 @@ while [[ $# -gt 0 ]]; do
     --tier)             TIER="$2";         shift 2 ;;
     --dry-run)          DRY_RUN=true;      shift   ;;
     --no-model-routing) MODEL_ROUTING=false; shift  ;;
+    --reset-next-role)  RESET_NEXT_ROLE=true; shift ;;
     -h|--help)
       cat <<'EOF'
 Usage: ./run-pipeline.sh [options]
@@ -131,6 +133,11 @@ Options:
                        warning emitted). See skills/11-round-scaling.md.
   --dry-run            Print what would run without executing
   --no-model-routing   Use CLAUDE_DEFAULT_MODEL for all roles
+  --reset-next-role    Overwrite coordination/NEXT-ROLE.md with the auto-init
+                       template even when it shows a different CURRENT-ROUND.
+                       Default behavior refuses to overwrite (preserves
+                       operator-prepared inputs); use this only when the
+                       existing file has no content worth keeping.
 
 Exit codes:
   0 = success (MERGE-READY or ROUND-COMPLETE)
@@ -1377,8 +1384,18 @@ run_preflight() {
 ## Emerging patterns
 EOF
 
-  # Initialize NEXT-ROLE.md for new round
-  if ! grep -q "CURRENT-ROUND: $ROUND" "$COORD/NEXT-ROLE.md" 2>/dev/null; then
+  # NEXT-ROLE.md state machine for the requested round.
+  # Three cases:
+  #   (1) File doesn't exist → auto-init (fresh project / first round).
+  #   (2) File exists with `CURRENT-ROUND: $ROUND` → use as-is (operator-prepared
+  #       OR pipeline-prepared on a prior run of this round).
+  #   (3) File exists with a DIFFERENT `CURRENT-ROUND:` → refuse to silently
+  #       overwrite, because the file likely carries operator-prepared inputs
+  #       (round-scope directives, custom input lists, escalation notes) that
+  #       auto-init would destroy.
+  # Case (3) was the silent-overwrite-then-architect-misses-operator-inputs bug.
+  # Operator may opt back into the old behavior with `--reset-next-role`.
+  if [[ ! -f "$COORD/NEXT-ROLE.md" ]]; then
     cat > "$COORD/NEXT-ROLE.md" << EOF
 CURRENT-ROUND: $ROUND
 NEXT-ROLE: $FIRST_ROLE
@@ -1393,7 +1410,41 @@ STATUS: READY
 ## Routing notes
 (none)
 EOF
-    log "Initialized NEXT-ROLE.md for round $ROUND ($TIER)"
+    log "Initialized NEXT-ROLE.md for round $ROUND ($TIER) — fresh project."
+  elif grep -q "CURRENT-ROUND: $ROUND" "$COORD/NEXT-ROLE.md" 2>/dev/null; then
+    log "NEXT-ROLE.md already at CURRENT-ROUND: $ROUND — using as-is (operator-prepared or prior-run state)."
+  elif $RESET_NEXT_ROLE; then
+    cat > "$COORD/NEXT-ROLE.md" << EOF
+CURRENT-ROUND: $ROUND
+NEXT-ROLE: $FIRST_ROLE
+STATUS: READY
+
+## Inputs for next role
+- $PRD_PATH
+
+## Escalation items
+(none)
+
+## Routing notes
+(none)
+EOF
+    log_warn "--reset-next-role: overwrote NEXT-ROLE.md with auto-init template for round $ROUND."
+  else
+    local existing_round
+    existing_round=$(grep -m1 -E '^CURRENT-ROUND:' "$COORD/NEXT-ROLE.md" | awk '{print $2}')
+    log_error "NEXT-ROLE.md shows CURRENT-ROUND: ${existing_round:-<missing>} but you requested round $ROUND."
+    log_error "The pipeline refuses to silently overwrite NEXT-ROLE.md, because the existing"
+    log_error "file may carry operator-prepared inputs (round-scope directives, custom input"
+    log_error "lists, escalation notes) that auto-init would destroy. Pick one:"
+    log_error ""
+    log_error "  (a) Manually update NEXT-ROLE.md to 'CURRENT-ROUND: $ROUND' with the inputs"
+    log_error "      the next role should read. Then re-run the pipeline."
+    log_error "  (b) Re-run with --round ${existing_round:-<existing>} if you meant to continue"
+    log_error "      the round NEXT-ROLE.md is already prepared for."
+    log_error "  (c) Re-run with --reset-next-role to overwrite NEXT-ROLE.md with the default"
+    log_error "      auto-init template. Use only when you're sure the existing file has no"
+    log_error "      operator-prepared content worth preserving."
+    exit 1
   fi
 
   # Warn on prior BLOCKED state — don't silently overwrite
