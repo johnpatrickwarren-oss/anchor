@@ -75,7 +75,12 @@ RESET_NEXT_ROLE=false
 MODEL_ARCHITECT="claude-opus-4-7"
 MODEL_IMPLEMENTER="claude-sonnet-4-6"
 MODEL_REVIEWER="claude-opus-4-7"
-MODEL_MEMORIAL="claude-sonnet-4-6"
+# Two model candidates for MU; selector chooses between them per directive content.
+MODEL_MEMORIAL_DEFAULT="claude-haiku-4-5-20251001"   # ~3× cost reduction vs Sonnet (R74)
+MODEL_MEMORIAL_SONNET="claude-sonnet-4-6"             # fallback for substantive cross-round work
+MODEL_MEMORIAL=""                                     # resolved at TIER-decision time
+MU_FALLBACK_RATIONALE=""
+MODEL_COORDINATOR="claude-opus-4-7"
 MODEL_DEFAULT="claude-sonnet-4-6"
 
 # Hybrid Reviewer: when HYBRID_REVIEWER=true AND tier=audit, the Reviewer stage
@@ -100,6 +105,7 @@ BUDGET_IMPLEMENTER=120
 BUDGET_REVIEWER=60
 BUDGET_REVIEWER_MERGER=30
 BUDGET_MEMORIAL=30
+BUDGET_COORDINATOR=80
 
 # Populated by detect_claude_flags()
 PERMISSION_FLAG=()
@@ -107,15 +113,32 @@ MODEL_FLAG_SUPPORTED=false
 BUDGET_FLAG_SUPPORTED=false
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
+COORDINATOR_MODE=false
+WAVE_GATE_MODE=false
+WAVE_GATE_ID=""
+CONSOLIDATION_REVIEWER=false
+AUTO_TIER=false
+TIER_EXPLICIT=false
+MU_SONNET=false
+REVIEWER_SCOPE_EXPLICIT=""   # set by --reviewer-scope flag
+REVIEWER_SCOPE=""            # resolved after TIER is finalized
+ROUTER_OUT=""                # populated by --auto-tier block; empty otherwise
 while [[ $# -gt 0 ]]; do
   case $1 in
     --round)            ROUND="$2";        shift 2 ;;
     --start-at)         START_AT="$2";     shift 2 ;;
     --prd)              PRD_PATH="$2";     shift 2 ;;
-    --tier)             TIER="$2";         shift 2 ;;
+    --tier)             TIER="$2"; TIER_EXPLICIT=true; shift 2 ;;
     --dry-run)          DRY_RUN=true;      shift   ;;
+    --hybrid-reviewer)  HYBRID_REVIEWER=true; shift ;;
     --no-model-routing) MODEL_ROUTING=false; shift  ;;
     --reset-next-role)  RESET_NEXT_ROLE=true; shift ;;
+    --coordinator)      COORDINATOR_MODE=true; shift ;;
+    --wave-gate)        WAVE_GATE_MODE=true; WAVE_GATE_ID="$2"; shift 2 ;;
+    --auto-tier)        AUTO_TIER=true;    shift   ;;
+    --mu-sonnet)        MU_SONNET=true;    shift   ;;
+    --reviewer-scope)   REVIEWER_SCOPE_EXPLICIT="$2"; shift 2 ;;
+    --consolidation-reviewer) CONSOLIDATION_REVIEWER=true; shift ;;
     -h|--help)
       cat <<'EOF'
 Usage: ./run-pipeline.sh [options]
@@ -132,12 +155,33 @@ Options:
                        Backward-compat: T0/T1/T3 still accepted (deprecation
                        warning emitted). See skills/11-round-scaling.md.
   --dry-run            Print what would run without executing
+  --hybrid-reviewer    Force hybrid Reviewer (Opus + Sonnet merged). Mandatory for
+                       close-walk class rounds; see CLAUDE-COORDINATOR.md. Also
+                       auto-triggered by scripts/finalize-round.sh when
+                       CLOSE-WALK-CLASS: true is set in coordination/NEXT-ROLE.md.
   --no-model-routing   Use CLAUDE_DEFAULT_MODEL for all roles
   --reset-next-role    Overwrite coordination/NEXT-ROLE.md with the auto-init
                        template even when it shows a different CURRENT-ROUND.
                        Default behavior refuses to overwrite (preserves
                        operator-prepared inputs); use this only when the
                        existing file has no content worth keeping.
+  --coordinator        Coordinator-only mode (multi-cluster prep). Overrides
+                       --tier; runs ONLY the Coordinator role to produce
+                       a wave plan (coordination/WAVE-PLAN-NN.md per
+                       templates/WAVE-PLAN-TEMPLATE.md). Does not dispatch
+                       clusters — emits the plan; operator reviews + invokes
+                       scripts/multi-track-cluster-setup.sh per cluster.
+                       See CLAUDE-COORDINATOR.md for role discipline.
+  --wave-gate WAVE-NN  Coordinator wave-gate close (use with --coordinator).
+                       Runs scripts/verify-wave-aggregate.sh WAVE-NN, detects
+                       solo-tier clusters, and fires a mandatory tier-aware
+                       consolidation Reviewer if any cluster ran --tier solo.
+                       See CLAUDE-COORDINATOR.md § Wave gate discipline.
+  --consolidation-reviewer
+                       Force consolidation Reviewer at wave-gate close, even
+                       when all clusters ran audit/full tiers (which provide
+                       per-cluster cold-eye). Requires --coordinator --wave-gate.
+                       Without --wave-gate, this flag is silently ignored.
 
 Exit codes:
   0 = success (MERGE-READY or ROUND-COMPLETE)
@@ -148,6 +192,133 @@ EOF
     *) echo "Unknown argument: $1"; exit 1 ;;
   esac
 done
+
+# ── Auto-tier integration (R73) ───────────────────────────────────────────────
+# When --auto-tier is passed without an explicit --tier, invoke the heuristic router
+# against coordination/NEXT-ROLE.md and set TIER from the router output.
+# Explicit --tier always wins; auto-tier is advisory when no explicit tier is given.
+if [[ "$AUTO_TIER" == "true" && "$TIER_EXPLICIT" != "true" ]]; then
+  ROUTER_OUT="$(node scripts/tier-router.js --mode hybrid 2>/dev/null)" || true
+  if [[ -n "$ROUTER_OUT" ]]; then
+    ROUTER_TIER="$(echo "$ROUTER_OUT" | node -e \
+      "process.stdin.resume(); let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{ try{console.log(JSON.parse(d).tier)}catch{} })" 2>/dev/null)" || true
+    case "$ROUTER_TIER" in
+      full)             TIER="full" ;;
+      audit)            TIER="audit" ;;
+      implementer-only) TIER="solo" ;;
+      coordinator-only) COORDINATOR_MODE=true ;;
+    esac
+    echo "INFO:  --auto-tier: router recommended '$ROUTER_TIER'; TIER set to '$TIER'" >&2
+  else
+    echo "WARN:  --auto-tier: router failed or unavailable; defaulting to TIER='full'" >&2
+  fi
+fi
+
+# ── MU model selection (R74) ──────────────────────────────────────────────────
+# Default: Haiku 4.5 (~3× cost vs Sonnet for routine pattern-matching MU work).
+# Sonnet fallback when (a) --mu-sonnet flag set OR (b) tier=full AND directive
+# contains cross-round-pattern marker. Selector mechanism at scripts/mu-model-select.ts.
+MU_SELECT_OUT=""
+if [[ "$TIER" == "solo" ]] || $COORDINATOR_MODE; then
+  MODEL_MEMORIAL="$MODEL_MEMORIAL_DEFAULT"   # MU not dispatched; value irrelevant but set for log
+  MU_FALLBACK_RATIONALE="MU not dispatched on this tier"
+else
+  if [ "$MU_SONNET" = "true" ]; then
+    MU_SELECT_OUT="$(node scripts/mu-model-select.js --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" --mu-sonnet 2>/dev/null)" || true
+  else
+    MU_SELECT_OUT="$(node scripts/mu-model-select.js --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" 2>/dev/null)" || true
+  fi
+  if [[ -n "$MU_SELECT_OUT" ]]; then
+    MU_MODEL_RAW="$(echo "$MU_SELECT_OUT" | node -e \
+      "process.stdin.resume(); let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{ try{const j=JSON.parse(d); console.log(j.model+'|'+(j.rationale||''))}catch{} })" 2>/dev/null)" || true
+    MU_MODEL_FIELD="${MU_MODEL_RAW%%|*}"
+    MU_FALLBACK_RATIONALE="${MU_MODEL_RAW#*|}"
+    case "$MU_MODEL_FIELD" in
+      claude-haiku-*)  MODEL_MEMORIAL="$MODEL_MEMORIAL_DEFAULT" ;;
+      claude-sonnet-*) MODEL_MEMORIAL="$MODEL_MEMORIAL_SONNET"  ;;
+      *)               MODEL_MEMORIAL="$MODEL_MEMORIAL_DEFAULT"
+                       MU_FALLBACK_RATIONALE="selector returned unexpected model; fallback haiku"
+                       ;;
+    esac
+  else
+    MODEL_MEMORIAL="$MODEL_MEMORIAL_DEFAULT"
+    MU_FALLBACK_RATIONALE="selector unavailable; fallback haiku"
+  fi
+fi
+
+# ── Reviewer scope selection (R74) ────────────────────────────────────────────
+if [[ -n "$REVIEWER_SCOPE_EXPLICIT" ]]; then
+  case "$REVIEWER_SCOPE_EXPLICIT" in
+    full|structural) REVIEWER_SCOPE="$REVIEWER_SCOPE_EXPLICIT" ;;
+    *) echo "ERROR: --reviewer-scope must be 'full' or 'structural'; got '$REVIEWER_SCOPE_EXPLICIT'" >&2; exit 1 ;;
+  esac
+else
+  case "$TIER" in
+    full)  REVIEWER_SCOPE="full" ;;
+    audit) REVIEWER_SCOPE="structural" ;;
+    *)     REVIEWER_SCOPE="" ;;   # solo / coordinator-only: Reviewer not invoked; empty
+  esac
+fi
+
+# ── Routing log (R74; extends R73 auto-tier log) ──────────────────────────────
+mkdir -p coordination/logs
+ROUTING_LOG="coordination/logs/ROUND-${ROUND}-ROUTING.md"
+{
+  echo "# Round ${ROUND} routing"
+  echo ""
+  echo "## Tier"
+  if $AUTO_TIER && [[ "$TIER_EXPLICIT" != "true" ]]; then
+    echo "Source: --auto-tier"
+  elif [[ "$TIER_EXPLICIT" == "true" ]]; then
+    echo "Source: explicit --tier ${TIER}"
+  else
+    echo "Source: pipeline default"
+  fi
+  echo "Final TIER: ${TIER}"
+  if [[ -n "${ROUTER_OUT:-}" ]]; then
+    echo "Router output: ${ROUTER_OUT}"
+  fi
+  echo ""
+  echo "## MU model"
+  echo "Model: ${MODEL_MEMORIAL}"
+  echo "Rationale: ${MU_FALLBACK_RATIONALE}"
+  if [[ -n "${MU_SELECT_OUT:-}" ]]; then
+    echo "Selector output: ${MU_SELECT_OUT}"
+  fi
+  echo ""
+  echo "## Reviewer scope"
+  if [[ -z "$REVIEWER_SCOPE" ]]; then
+    echo "Scope: (not invoked on this tier)"
+  else
+    echo "Scope: ${REVIEWER_SCOPE}"
+    if [[ -n "$REVIEWER_SCOPE_EXPLICIT" ]]; then
+      echo "Source: explicit --reviewer-scope ${REVIEWER_SCOPE_EXPLICIT}"
+    else
+      echo "Source: default for tier=${TIER}"
+    fi
+  fi
+} > "$ROUTING_LOG"
+
+# R75: cache-prefix telemetry. Measures the byte-identical PREFIX (load-bearing
+# for Anthropic prompt-cache hits across role sessions). Emitted once at
+# pipeline startup; per-role tail bytes recorded by run_role() on dispatch.
+{
+  echo ""
+  echo "## Cache-prefix telemetry"
+  if [[ -f "$PROJECT_ROOT/scripts/measure-cache-effect.js" ]]; then
+    measure_out=""
+    if measure_out=$(node "$PROJECT_ROOT/scripts/measure-cache-effect.js" \
+        --round "$ROUND" \
+        --project-root "$PROJECT_ROOT" 2>/dev/null); then
+      echo "Measurer: scripts/measure-cache-effect.js"
+      echo "Output: ${measure_out}"
+    else
+      echo "Measurer: scripts/measure-cache-effect.js (invocation failed; no telemetry)"
+    fi
+  else
+    echo "Measurer: not-yet-compiled (R75-pre-chore-A or fresh clone before pretest)"
+  fi
+} >> "$ROUTING_LOG"
 
 # ── Tier configuration ────────────────────────────────────────────────────────
 # full (default): full Anchor — Architect writes spec, Implementer executes,
@@ -196,6 +367,25 @@ case "$TIER" in
     exit 1
     ;;
 esac
+
+# --coordinator overrides tier-derived ROLES entirely. Coordinator mode runs
+# ONLY the Coordinator role to produce a wave plan; cluster dispatch is a
+# separate operator step (scripts/multi-track-cluster-setup.sh per cluster).
+#
+# --coordinator --wave-gate WAVE-NN: Coordinator wave-gate close flow.
+# Runs verify-wave-aggregate.sh, detects solo-tier clusters, and fires a
+# mandatory tier-aware consolidation Reviewer if any cluster ran --tier solo.
+# See CLAUDE-COORDINATOR.md § "Tier-aware consolidation Reviewer at wave-gate close".
+if $COORDINATOR_MODE; then
+  if $WAVE_GATE_MODE; then
+    ROLES=("COORDINATOR-WAVE-GATE")
+    TIER_DESC="coordinator-wave-gate (aggregate verifier + tier-aware consolidation Reviewer)"
+  else
+    ROLES=("COORDINATOR")
+    TIER_DESC="coordinator (PRD → DAG → wave plan; cluster dispatch is separate)"
+  fi
+fi
+
 FIRST_ROLE="${ROLES[0]}"
 
 mkdir -p "$LOG_DIR"
@@ -487,6 +677,207 @@ When spec passes grilling:
 ROLE BOUNDARY:
 Do not write implementation code. Do not open test files.
 All unresolved decisions → open questions in the spec. Not silent choices.
+PROMPT
+}
+
+# Coordinator-only mode: runs when --coordinator is passed. Produces a wave
+# plan from the PRD; does not dispatch clusters. See CLAUDE-COORDINATOR.md.
+build_coordinator_prompt() {
+  # Find the next wave-plan version number. WAVE-PLAN-01.md is first; subsequent
+  # plans are emitted at resequencing events from wave-gate failures.
+  local next_wave_plan_n
+  local existing_count
+  existing_count=$(find "$COORD" -maxdepth 1 -name 'WAVE-PLAN-*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
+  next_wave_plan_n=$(printf '%02d' $((existing_count + 1)))
+
+  cat > "$COORD/.prompt-coordinator.md" << PROMPT
+You are the COORDINATOR for round $ROUND.
+
+You operate at the program level above all clusters. Your job is PRD
+decomposition → DAG construction → wave sequencing. You do NOT write specs,
+implement code, or reach inside clusters. See CLAUDE-COORDINATOR.md for
+the full role discipline (loaded as your system prompt).
+
+Read these before doing anything (in order):
+  - $PRD_PATH  (requirements — read in full)
+  - coordination/SCOPING-MEMO-v0.3.md  (canonical scope; § 2 per-extension scope; § 3 Q-cycle estimates)
+  - coordination/NEXT-ROLE.md  (round-scope directive — operator-prepared inputs for this Coordinator invocation)
+  - coordination/PHASE-2-SLICE-1-CLOSE-WALK.md  (vendored-with-deltas + anti-scope SHA-anchor patterns)
+  - coordination/PHASE-2-SLICE-2-CLOSE-WALK.md  (most recent close-walk; SLICE 3 entry framing in § 3)
+  - templates/WAVE-PLAN-TEMPLATE.md  (scaffold for your primary deliverable)
+  - templates/README.md  (Tessera-local path-reference adaptation table)
+  - $CROSS_MEMORIAL  ("Reinforcement rules derived" sections — apply all)
+
+DAG construction discipline (per CLAUDE-COORDINATOR.md §DAG construction):
+  Step 1 — Deterministic work unit extraction from PRD structure
+  Step 2 — Dependency edge identification via D1-D5 tests (apply in order)
+  Step 3 — Claude judgment only at ambiguity boundaries (log each call)
+  Step 4 — DAG validation (cycle check; island check; foundation identification)
+  Step 5 — Wave sequencing (Wave 1 = foundations; cap ≤5 clusters per wave)
+  Step 6 — Work unit tier classification (solo / audit / full per CLAUDE-COMMON.md rubric)
+
+Deliverable: coordination/WAVE-PLAN-${next_wave_plan_n}.md
+  - Use templates/WAVE-PLAN-TEMPLATE.md as the scaffold
+  - Fill every section; do not leave placeholder text
+  - Pre-emit grilling per template's §Pre-emit grilling checklist
+  - Surface OQs to operator at end of plan (do not invent answers)
+
+Secondary deliverables (only if needed):
+  - templates/CLUSTER-HANDOFF-TEMPLATE.md → coordination/CLUSTER-HANDOFF-NN-WUA-WUB.md
+    (one file per directed dependency edge; created when target cluster dispatches, not pre-created at plan time)
+  - coordination/COORDINATOR-MEMORIAL.md (initialize from templates/COORDINATOR-MEMORIAL-TEMPLATE.md if first Coordinator invocation; append-only thereafter)
+
+Single-cluster vs multi-cluster outcome (operator preference: PREFER fan-out
+when independence is clean; DO NOT force fan-out when scope is genuinely
+sequential):
+
+  Active bias. When the D1-D5 dependency tests show two or more work units
+  in a wave are genuinely independent (no D1 shared-output edge, no D2
+  AC-reference edge, no D5-strict write-conflict, D4 file-tree overlap
+  resolvable via worktree isolation), PREFER to dispatch them as parallel
+  clusters in the same wave. Do not collapse them into a single cluster
+  for convenience or out of conservatism — if independence is clean, fan
+  out.
+
+  When fan-out is legitimately NOT available (D1/D2/D5 edges between every
+  pair of WUs in a candidate wave; or candidate-wave WUs collapse to one
+  WU under deterministic extraction; or scope is small enough that a
+  single solo/audit cluster is more economical than coordinator overhead
+  + N parallel clusters), recommend single-cluster waves with explicit
+  reasoning. The operator does not want fan-out for its own sake — they
+  want fan-out wherever it's a clean option.
+
+  Trade-off framing in the plan summary: when you recommend a single-
+  cluster wave, briefly note WHY fan-out was unavailable (which D-test
+  fired across all candidate pairs, or which constraint collapsed the
+  candidates). This makes the operator's review explicit and surfaces
+  cases where a tighter PRD decomposition might unlock fan-out later.
+
+  For waves with ≥2 clusters:
+    - Recommend the operator invoke scripts/multi-track-cluster-setup.sh per cluster
+    - Document each cluster's worktree branch + scope in the wave plan
+  For single-cluster waves:
+    - Recommend the operator run scripts/run-pipeline.sh in standard mode (no --coordinator)
+    - Note the specific constraint that prevented fan-out
+
+When wave plan passes grilling:
+  Update coordination/NEXT-ROLE.md:
+    NEXT-ROLE: OPERATOR (wave-plan review)
+    STATUS: WAVE-PLAN-READY
+    Inputs: coordination/WAVE-PLAN-${next_wave_plan_n}.md
+
+  Initialize or append to coordination/COORDINATOR-MEMORIAL.md:
+    CONFIRMATION or VIOLATION entries for any discipline patterns surfaced during this invocation.
+
+ROLE BOUNDARY:
+Do not draft cluster-level specs. Do not modify any cluster's NEXT-ROLE.md.
+Do not write implementation code. Do not pre-resolve OQs by assumption.
+Once the wave plan is emitted, your job for this invocation is done.
+PROMPT
+}
+
+# Coordinator wave-gate close flow:
+# (1) Run scripts/verify-wave-aggregate.sh <WAVE-NN>
+# (2) Detect if any cluster ran --tier solo (heuristic: no REVIEWER CONFIRMATION
+#     in MEMORIAL-fragment.md implies solo-tier — the Reviewer stage appends at
+#     minimum one CONFIRMATION entry in audit/full tiers)
+# (3) If solo-tier detected OR --consolidation-reviewer flag: dispatch consolidation
+#     Reviewer subprocess
+# See CLAUDE-COORDINATOR.md § "Tier-aware consolidation Reviewer at wave-gate close"
+run_wave_gate_close() {
+  log_section "COORDINATOR WAVE-GATE CLOSE | Wave: $WAVE_GATE_ID"
+
+  # Step 1: aggregate verifier
+  if [[ -x "scripts/verify-wave-aggregate.sh" ]]; then
+    log "Running scripts/verify-wave-aggregate.sh $WAVE_GATE_ID ..."
+    local aggregate_exit=0
+    scripts/verify-wave-aggregate.sh "$WAVE_GATE_ID" | tee -a "$PIPELINE_LOG" || aggregate_exit=$?
+    if [[ $aggregate_exit -ne 0 ]]; then
+      log_warn "verify-wave-aggregate.sh exited $aggregate_exit — aggregate finding(s) detected."
+      log_warn "Review findings above before setting STATUS: WAVE-COMPLETE."
+    else
+      log "verify-wave-aggregate.sh: clean sweep (exit 0)."
+    fi
+  else
+    log_warn "scripts/verify-wave-aggregate.sh not found or not executable; skipping aggregate sweep."
+    log_warn "Install with: chmod +x scripts/verify-wave-aggregate.sh"
+  fi
+
+  # Step 2: detect solo-tier clusters
+  local solo_tier_detected=false
+  local fragment_dir="coordination/clusters"
+  if [[ -d "$fragment_dir" ]]; then
+    for fragment in "$fragment_dir"/*/MEMORIAL-fragment.md; do
+      [[ -f "$fragment" ]] || continue
+      # Heuristic: a solo-tier cluster's fragment has no REVIEWER CONFIRMATION entry.
+      # audit/full clusters have at least one REVIEWER-authored CONFIRMATION.
+      if ! grep -qE "\| REVIEWER$" "$fragment" 2>/dev/null; then
+        cluster_id=$(basename "$(dirname "$fragment")")
+        log_warn "Cluster '$cluster_id' appears to have run solo-tier (no REVIEWER entries in fragment)."
+        solo_tier_detected=true
+      fi
+    done
+  fi
+
+  # Step 3: tier-aware consolidation Reviewer
+  local consolidation_needed=false
+  if $solo_tier_detected; then
+    log "Solo-tier cluster(s) detected — MANDATORY consolidation Reviewer required."
+    consolidation_needed=true
+  elif $CONSOLIDATION_REVIEWER; then
+    log "--consolidation-reviewer flag set — dispatching consolidation Reviewer."
+    consolidation_needed=true
+  else
+    log "All clusters ran audit/full tiers. Consolidation Reviewer not required."
+    log "Use --consolidation-reviewer to force if cross-cluster integration review is wanted."
+  fi
+
+  if $consolidation_needed; then
+    log_section "CONSOLIDATION REVIEWER — spawning cold-eye cross-cluster review"
+    build_consolidation_reviewer_prompt
+    run_role "REVIEWER" "$COORD/.prompt-consolidation-reviewer.md" \
+      "$(get_model REVIEWER)" "$(get_budget REVIEWER)"
+    log "Consolidation Reviewer complete."
+  fi
+
+  log_section "COORDINATOR WAVE-GATE — complete"
+  log "Next step: set STATUS: WAVE-COMPLETE in coordination/NEXT-ROLE.md"
+  log "Then dispatch Wave N+1 clusters per coordination/WAVE-PLAN-*.md."
+}
+
+build_consolidation_reviewer_prompt() {
+  local wave_num="${WAVE_GATE_ID#WAVE-}"
+  local wave_plan_path="coordination/WAVE-PLAN-${wave_num}.md"
+  cat > "$COORD/.prompt-consolidation-reviewer.md" << PROMPT
+You are the CONSOLIDATION REVIEWER for wave-gate close of $WAVE_GATE_ID.
+
+Your scope is cross-cluster integration audit. You are NOT re-doing per-cluster
+review (cluster-level Reviewers already covered cluster-local work). You are
+auditing cross-cluster concerns that are only visible at the consolidated layer.
+
+Read before auditing:
+  - $wave_plan_path  (wave plan; cluster list + scope)
+  - coordination/clusters/*/MEMORIAL-fragment.md  (all cluster memorial fragments)
+  - Any CLUSTER-HANDOFF-*.md files in coordination/ (cross-cluster contracts)
+  - coordination/MEMORIAL.md  (active memorial for methodology context)
+
+Cross-cluster concerns to audit:
+  1. **Aggregate scope creep.** Do any cluster diffs collectively reach outside the
+     wave-level scope defined in the wave plan?
+  2. **Contract drift.** If cluster A and cluster B both touch a shared schema,
+     interface, or type definition — do they agree on shape? Run:
+     \`git show <cluster-A-branch>:<shared-file>\` vs \`git show <cluster-B-branch>:<shared-file>\`
+  3. **MEMORIAL semantic-conflict.** If a discipline keyword appears as CONFIRMATION
+     in one cluster and VIOLATION in another — flag for operator decision.
+  4. **Integration gaps.** Are there behaviors that each cluster individually
+     tested but that their integration surfaces cannot exercise together?
+
+Emit a REVIEWER REPORT at coordination/reviews/REVIEWER-REPORT-${ROUND}-consolidation.md.
+Use standard CRITICAL / MAJOR / MINOR / OBS severity levels.
+
+ROLE BOUNDARY:
+Do NOT re-audit cluster-local ACs (per-cluster Reviewers own those).
+Focus only on cross-cluster integration surfaces.
 PROMPT
 }
 
@@ -804,6 +1195,20 @@ build_reviewer_prompt() {
   local prompt_file
   local report_path
   local routing_block
+  local scope_note=""
+  if [[ "$REVIEWER_SCOPE" == "structural" ]]; then
+    scope_note="
+**MODE: STRUCTURAL-ONLY REVIEWER (R74).**
+Per CLAUDE-REVIEWER.md \"## Mode: Structural-only Reviewer\" section, this
+audit is scoped to: (1) binding-command re-runs verbatim, (2) AC-binding
+structural integrity walk, (3) ALLOWED_SET diff verification. DO NOT perform
+adversarial counterfactual reasoning. DO NOT perform a right-reasons audit.
+The \"find what the Implementer got wrong\" mandate is SUSPENDED in this
+mode — you are verifying structural compliance, not assuming a mistake.
+
+Routing unchanged: CRITICAL → ESCALATE; MAJOR or below → MERGE-READY.
+"
+  fi
   if [[ -n "$tag" ]]; then
     prompt_file="$COORD/.prompt-reviewer-${tag}.md"
     report_path="coordination/reviews/REVIEWER-REPORT-${ROUND}-${tag}.md"
@@ -833,7 +1238,7 @@ ROLE BOUNDARY: Document findings. Do not fix. Do not re-implement."
 
   cat > "$prompt_file" << PROMPT
 You are the REVIEWER for round $ROUND.
-
+${scope_note}
 Read ALL of these before writing a single word of your report:
   - $PRD_PATH
   - coordination/specs/Q-${ROUND}-SPEC.md
@@ -1059,6 +1464,7 @@ get_model() {
     REVIEWER-SONNET)  echo "$MODEL_REVIEWER_SECONDARY" ;;
     REVIEWER-MERGE)   echo "$MODEL_REVIEWER_MERGER" ;;
     MEMORIAL-UPDATER) echo "$MODEL_MEMORIAL" ;;
+    COORDINATOR)      echo "$MODEL_COORDINATOR" ;;
     *)                echo "$MODEL_DEFAULT" ;;
   esac
 }
@@ -1070,6 +1476,7 @@ get_budget() {
     REVIEWER|REVIEWER-OPUS|REVIEWER-SONNET) echo "$BUDGET_REVIEWER" ;;
     REVIEWER-MERGE)   echo "$BUDGET_REVIEWER_MERGER" ;;
     MEMORIAL-UPDATER) echo "$BUDGET_MEMORIAL" ;;
+    COORDINATOR)      echo "$BUDGET_COORDINATOR" ;;
     *)                echo "40" ;;
   esac
 }
@@ -1142,7 +1549,8 @@ commit_memorial_outputs() {
   # Stage all coordination/ changes + any CLAUDE*.md modification (each role's
   # reinforcement file is a possible target of this round's Memorial Updater).
   git add -A coordination/ CLAUDE.md CLAUDE-COMMON.md CLAUDE-ARCHITECT.md \
-    CLAUDE-IMPLEMENTER.md CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md 2>/dev/null || true
+    CLAUDE-IMPLEMENTER.md CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md \
+    CLAUDE-COORDINATOR.md 2>/dev/null || true
 
   if git diff --cached --quiet 2>/dev/null; then
     log "Memorial-Updater outputs: nothing to commit (already clean)."
@@ -1155,6 +1563,32 @@ commit_memorial_outputs() {
     log "Memorial-Updater outputs committed: $sha"
   else
     log_warn "Memorial-Updater commit failed; operator must commit manually."
+    log_warn "Outstanding files:"
+    git status --short 2>&1 | head -10 | tee -a "$PIPELINE_LOG"
+  fi
+}
+
+# Coordinator output commit. The Coordinator role writes WAVE-PLAN-NN.md and
+# may initialize / append to COORDINATOR-MEMORIAL.md and update NEXT-ROLE.md;
+# none of those get committed by the role itself. In --coordinator mode the
+# Coordinator is the only role in the pipeline (no Memorial-Updater follows),
+# so we commit its outputs here on clean completion.
+commit_coordinator_outputs() {
+  cd "$PROJECT_ROOT" || return 1
+
+  git add -A coordination/ 2>/dev/null || true
+
+  if git diff --cached --quiet 2>/dev/null; then
+    log "Coordinator outputs: nothing to commit (already clean)."
+    return 0
+  fi
+
+  if git commit -q -m "chore($ROUND): Coordinator wave-plan outputs"; then
+    local sha
+    sha=$(git rev-parse --short HEAD)
+    log "Coordinator outputs committed: $sha"
+  else
+    log_warn "Coordinator commit failed; operator must commit manually."
     log_warn "Outstanding files:"
     git status --short 2>&1 | head -10 | tee -a "$PIPELINE_LOG"
   fi
@@ -1197,6 +1631,7 @@ EOF
     REVIEWER|REVIEWER-OPUS|REVIEWER-SONNET|REVIEWER-MERGE)
                       role_claude_file="$PROJECT_ROOT/CLAUDE-REVIEWER.md" ;;
     MEMORIAL-UPDATER) role_claude_file="$PROJECT_ROOT/CLAUDE-MEMORIAL.md" ;;
+    COORDINATOR)      role_claude_file="$PROJECT_ROOT/CLAUDE-COORDINATOR.md" ;;
     *)
       log_error "run_role: no CLAUDE-<ROLE>.md mapping for role '$role'"
       return 1 ;;
@@ -1225,13 +1660,28 @@ EOF
     $BUDGET_FLAG_SUPPORTED && \
       flags+=("--max-turns" "$budget")
 
-    # Append CLAUDE-COMMON.md + CLAUDE-<ROLE>.md + role-stamp as the system
-    # prompt addition. --append-system-prompt preserves Claude Code's built-in
-    # capabilities and adds our role + discipline definitions on top.
-    # The common + role files are stable across worktrees → prompt-cache prefix
-    # hits. .role-stamp varies per session and goes AFTER, so the cacheable
-    # prefix remains intact.
-    flags+=("--append-system-prompt" "$(cat "$PROJECT_ROOT/CLAUDE-COMMON.md" "$role_claude_file" "$stamp_file")")
+    # R75: gated context-bundle dispatch. When scripts/build-role-context.js
+    # exists, use the deterministic prefix+tail construction so Anthropic's
+    # prompt-cache hits the prefix across role sessions within a 5-min TTL.
+    # Falls back to the legacy cat-bundle when .js missing (e.g., during the
+    # R75 round itself before the script is compiled at chore-A pretest).
+    local context_bundle=""
+    if [[ -f "$PROJECT_ROOT/scripts/build-role-context.js" ]]; then
+      if context_bundle=$(node "$PROJECT_ROOT/scripts/build-role-context.js" \
+          --emit full \
+          --role "$role" \
+          --round "$ROUND" \
+          --project-root "$PROJECT_ROOT" \
+          --role-claude-file "$role_claude_file" 2>/dev/null); then
+        :
+      else
+        context_bundle=""
+      fi
+    fi
+    if [[ -z "$context_bundle" ]]; then
+      context_bundle=$(cat "$PROJECT_ROOT/CLAUDE-COMMON.md" "$role_claude_file" "$stamp_file")
+    fi
+    flags+=("--append-system-prompt" "$context_bundle")
 
     # --exclude-dynamic-system-prompt-sections moves per-machine drift
     # (cwd, env, git status) out of the cached system-prompt prefix so it
@@ -1250,6 +1700,9 @@ EOF
       log "$role completed."
       if [[ "$role" == "MEMORIAL-UPDATER" ]]; then
         commit_memorial_outputs
+      fi
+      if [[ "$role" == "COORDINATOR" ]]; then
+        commit_coordinator_outputs
       fi
       check_escalation
       return 0
@@ -1501,11 +1954,20 @@ for role in "${ROLES[@]}"; do
     continue
   fi
 
+  # Coordinator wave-gate close: run aggregate verifier + tier-aware consolidation
+  # Reviewer directly (not via run_role — wave-gate is orchestration, not a single
+  # Claude session).
+  if [[ "$role" == "COORDINATOR-WAVE-GATE" ]]; then
+    run_wave_gate_close
+    continue
+  fi
+
   case "$role" in
     ARCHITECT)        build_architect_prompt ;;
     IMPLEMENTER)      build_implementer_prompt ;;
     REVIEWER)         build_reviewer_prompt ;;
     MEMORIAL-UPDATER) build_memorial_prompt ;;
+    COORDINATOR)      build_coordinator_prompt ;;
   esac
 
   run_role "$role" \
