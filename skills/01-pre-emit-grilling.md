@@ -45,6 +45,9 @@ For each artifact type, the grilling checklist differs slightly:
 - Has every cited file been opened (not summarized from memory)? **Now enforced structurally** — see § Existing-architectural-surface enforcement below.
 - Has the compiled artifact been opened, not just source?
 - Are anti-scope clauses explicit?
+- For every OBSERVED-binding disposition: would a future FIX matching the architect prediction FAIL this test? If yes, the binding is self-confirming — redesign. **See § OBSERVED-binding scope check below.**
+- For every factual claim about prior-round behavior inherited from a prior Reviewer / Architect / Memorial: has the relevant command/fixture been run, and is the OBSERVED output recorded inline? "Inherited from prior testimony" is not equivalent to "verified by own observation." **See § Inherited-testimony empirical verification below.**
+- For any correction of a wrong factual claim in a multi-section document: have ALL semantic-paraphrase sites AND downstream citing sections been enumerated and updated? A literal-exact grep on the primary correction site returning 0 is NOT full-document consistency verification. **See § Correction-propagation pass below.**
 
 **TPM routing pasteables:**
 - All filenames LIVE-verified?
@@ -94,6 +97,46 @@ The file-opened checklist item ("Has every cited file been opened?") is **declar
 **Mechanical verification:** [`integrations/superpowers-claude-code/scripts/verify-citations.sh`](../integrations/superpowers-claude-code/scripts/verify-citations.sh) parses the citation table, resolves each row against the cited SHA, and prints the actual file content at the cited lines for side-by-side comparison against the snippet column. Architect runs at pre-emit; Reviewer runs at audit.
 
 The combined template-section + script is the executable form of the file-opened discipline. The skill's checklist item still asks the question; the structural-and-mechanical enforcement makes "yes" verifiable rather than self-attested.
+
+## OBSERVED-binding scope check (added 2026-05-17 from Tessera R07 MAJOR-2)
+
+OBSERVED-binding is a spec disposition where a test asserts the OBSERVED output count from a current implementation run, rather than a theory-derived bound. The pattern was designed for narrow PRNG-drift cases (e.g., "test fires at window 21; architect predicted 20; ±1 PRNG drift; bind OBSERVED=21").
+
+**Failure mode:** OBSERVED-binding silently extends from PRNG-drift-class to structural-algorithmic-gap-class. If the architect predicted 20-30 fires and OBSERVED is 0, applying OBSERVED-binding produces a test that asserts `firedCount === 0` — which makes a future FIX restoring power FAIL the test, and a regression preserving 0 PASS it. The test is structurally self-confirming.
+
+**Trigger question:** For every OBSERVED-binding disposition the spec authorizes, ask: **"would a future implementation FIX matching the architect's prediction FAIL this test?"** If yes, the binding is self-confirming. Redesign:
+- Use theory-derived bounds where possible (e.g., `firedCount >= 25` from Ville-bound power calculation).
+- If the deviation IS PRNG-drift-class (small ±N), OBSERVED-binding is correct and the trigger question answers "no, future FIX would still satisfy because the prediction matches OBSERVED within ±N."
+- If the deviation is order-of-magnitude (predicted 20-30, OBSERVED 0): NOT PRNG-drift; structural-algorithmic-gap; OBSERVED-binding is wrong; redesign the test against theory-derived bounds OR scope-narrow the spec's behavioral claim to match what the algorithm actually does.
+
+**Origin:** Tessera R07 MAJOR-2 (sequential e-process FCP-1 detector; AC-12/13 bound OBSERVED=0 firings when architect predicted 20-30). Reviewer's right-reasons audit caught it. R08 redesigned the ACs as FPR-under-perturbation tests (Type-I error checks) + added new sustained-injection ACs with theory-derived bounds. Memorial reinforcement landed in `CLAUDE-ARCHITECT.md`.
+
+## Inherited-testimony empirical verification (added 2026-05-17 from Tessera R08 MAJOR-2)
+
+Multi-round projects accumulate factual claims about prior-round behavior across spec / Reviewer report / Memorial / NEXT-ROLE artifacts. The temptation: an architect drafting round N+M cites a factual claim from round N's Reviewer or Architect ("MCD on the clean fixture produces zero contamination flags") as if it were independently verified.
+
+**Failure mode:** the inherited claim was wrong. The architect's spec then prescribes downstream consequences (e.g., "tighten the test to `=== exactLength`") that fail empirically at implementation time. The Implementer's hands are tied — a spec premise is empirically false — and either silently absorbs the conflict or HALTs with a DIAGNOSTIC, depending on discipline. Either way, the round's quality is compromised at spec emit.
+
+**Trigger question:** For every factual claim about prior-round behavior that the spec cites or builds upon, ask: **"has this been verified by my own observation, or inherited from prior testimony?"** Inherited-from-prior-testimony is NOT verification. Run the relevant command/fixture against current production code and record the OBSERVED output inline in the spec (or in the audit sidecar's § P3.3 file-opened acknowledgment). Document the specific command run + the observed output + the date.
+
+**Worked rule:** "MCD flags zero contamination ticks on the clean fixture" — was this verified by running the AC-15 fixture against current `tools/curate-baseline-pre-pass.ts` at HEAD `<sha>`, output `n_ticks_contaminated=6`? If not, the claim is testimony, not verification. Verify first.
+
+**Origin:** Tessera R08 MAJOR-2 (Architect inherited the zero-flags claim from R07 Reviewer's MINOR-3 testimony without running the fixture; R08 spec premise wrong; downstream test prescription failed empirically). R09 cleanup round closed the surface gap; the reinforcement landed in `CLAUDE-ARCHITECT.md`. Discipline subsequently caught a different error in production use (operator's mistaken claim about merged PRs verified against `gh api`, surfacing the discrepancy before downstream actions corrupted).
+
+## Correction-propagation pass (added 2026-05-17 from Tessera R09 MAJOR-1)
+
+When a spec or doc contains a wrong factual claim that has propagated to multiple sites (semantic paraphrases, downstream citations, cross-reference tables), correcting only the primary site leaves the wrong claim visible at every other site. A literal-exact grep on the original wrong phrase returning 0 matches is NOT full-document consistency verification — the wrong claim may persist via semantic paraphrase.
+
+**Failure mode:** the architect (or implementer in self-spec) corrects the primary site, runs a literal-exact grep to confirm the wrong phrase is gone, and routes. Downstream Reviewer or future-round Architect encounters the wrong claim at a sibling section, treats it as authoritative, and propagates the error further.
+
+**Trigger question:** After correcting a wrong factual claim in any multi-section document, ask: **"have I enumerated ALL semantic-paraphrase sites and downstream citing sections, not just the literal-grep matches?"** Specifically:
+- **Semantic paraphrases:** the same claim restated in different words (e.g., "produces zero flags" vs "drops anything" vs "neither Stage X nor Stage Y modifies the output").
+- **Downstream citations:** cross-section tables, summary statements, AC text, in-section JSDoc, integration-point prose — anywhere the corrected primary claim is restated or its consequence is asserted.
+- **Aggregate counts:** "all N checks PASS" statements that were true pre-correction may be wrong post-correction.
+
+**Verification beyond literal grep:** read each candidate section's prose; ask "does this sentence rely on the wrong claim being true?" If yes, update.
+
+**Origin:** Tessera R09 MAJOR-1 (Implementer corrected primary site at `Q-R08-SPEC.md` § Mechanism primitive 11 but missed 4 sibling surfaces — preamble bullet, cross-section table row, "All 18 checks PASS" annotation, Delta 11 final sentence, AC text). Reviewer's right-reasons audit caught it. R09 followup direct-fix closed all 5 sites. Memorial reinforcement landed in `CLAUDE-IMPLEMENTER.md`.
 
 ## Memorial-accretion connection
 
