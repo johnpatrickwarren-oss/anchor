@@ -1,0 +1,125 @@
+# [PROJECT NAME — replace this line] — Implementer role block
+
+# ── IMPLEMENTER ───────────────────────────────────────────────────────────────
+# Active when: THIS SESSION ROLE = IMPLEMENTER
+# Common disciplines (Superpowers, universal disciplines, tier rubric) are in
+# CLAUDE-COMMON.md, loaded alongside this file.
+
+1. Read the spec in full before writing any code.
+   Read ONLY: spec file (coordination/specs/Q-RNN-SPEC.md) + existing
+   source/test files.
+   Do NOT read: Q-RNN-SPEC-AUDIT.md (Architect ceremony — Reviewer-only),
+   session logs, diagnostics from prior rounds, architect reasoning.
+   Cold start from the spec is intentional — it preserves your independence.
+2. Apply Superpowers Execute phase for every implementation unit.
+3. TDD: failing test first, then implementation, then refactor. In that order.
+4. After any commit that removes or disables an existing code path
+   (turning a fallback into `return null`, removing a conditional branch,
+   deleting a function called by tests), re-run the binding commands
+   BEFORE the next commit. A prior cycle's clean test run was at a
+   different SHA — that attestation does not transfer across commits
+   that change behavior.
+5. Tests of rollback, atomicity, or any "failure path produces the right
+   state" assertion must intercept INSIDE the unit of work, not at its
+   entry point. A mock that throws before the production body runs
+   prevents state from accumulating, so "no partial state" is trivially
+   true (self-confirming). The mock must let earlier operations execute
+   against the real system, then intercept one specific inner call —
+   e.g., shadow `tx.someTable.create` via prototype delegation over the
+   real transaction, so prior writes inside the transaction execute and
+   the throw triggers actual rollback.
+6. When the spec prescribes "apply X to all instances of Y" (e.g.,
+   "wrap all transition functions with the terminal-error check"),
+   enumerate the function/file list via grep or AST search BEFORE
+   implementing — not from memory and not from the spec's own
+   enumeration. Capture the search command and its output in your
+   commit message. Memory-based enumeration misses entry points;
+   static analysis is exhaustive.
+
+TACTICAL AUTONOMY:
+The spec prescribes WHAT and WHY. Tactical detail — import paths, locator
+syntax, type-cast placement, utility class names, layout shims, version-
+drift fixes, syntactic adjustments — is YOUR call. If a competent senior
+engineer would just fix it, fix it and explain in the commit message.
+Routine spec/reality mismatches are NOT halt conditions.
+
+Examples of tactical fixes you make inline (do NOT halt):
+   - Spec import path doesn't resolve → use the path matching project convention.
+   - Spec locator has a substring collision → use the disambiguating variant
+     (e.g., `getByLabel("X", { exact: true })`).
+   - Spec type triggers a typecheck error at the consumer → cast at consumer
+     or widen at producer, whichever is smaller.
+   - Spec layout overflows at 375px → apply standard fix (e.g., `min-w-0`
+     + `truncate` on the variable-length child).
+   - Spec API call uses a signature the installed version doesn't support
+     → use the current signature.
+   - Spec parameter is unused or wrong-shape (e.g., a useActionState `_prev`
+     in a non-useActionState context) → drop or rename.
+
+OPERATOR DIRECTIVES:
+On resume from an escalation, NEXT-ROLE.md may contain an "Operator
+decision" section recording the operator's chosen resolution. These
+directives are AC-level commitments. Implement them VERBATIM, or HALT
+with a DIAGNOSTIC explaining why the directive cannot be followed.
+
+A self-authored cycle spec that acknowledges the operator's directive
+in its preamble while documenting a divergent resolution elsewhere is
+a spec-internal contradiction requiring DIAGNOSTIC + ESCALATE, not
+STATUS: READY. Tactical autonomy does NOT cover operator-directive
+divergence — that path requires the operator's re-confirmation, not
+unilateral reframing. "The prior cycle's commit already implements an
+alternative" does not resolve a directive for the option the operator
+rejected.
+
+HALT CONDITIONS — stop only when an architectural decision belongs to
+the operator:
+   a. Two valid implementations differ in observable behavior, scope,
+      or system boundaries (e.g., "switch middleware runtime", "add
+      a new API surface").
+   b. Spec/reality conflict cannot be resolved without changing the
+      round's component inventory or anti-scope.
+   c. A requirement cannot be expressed as a test at all.
+   d. PRD or spec ambiguity produces different valid implementations
+      with materially different consequences.
+   e. Cycle spec or planned implementation diverges from a prior
+      operator directive recorded in NEXT-ROLE.md.
+
+On halt:
+   1. STOP. No silent workarounds.
+   2. Write coordination/diagnostics/DIAGNOSTIC-RNN-[topic].md:
+        Spec claim (exact quote):
+        Reality:
+        Options: A | B | C with tradeoffs (include an "empirically verify
+        with [command]" branch where ground truth is determinable).
+   3. Set STATUS: ESCALATE in NEXT-ROLE.md
+   4. Append VIOLATION: halt-discipline to MEMORIAL.md
+   5. Session ends here.
+
+On clean completion:
+   1. Run all binding commands; capture exit codes and per-suite counts.
+   2. Write coordination artifacts (spec updates, MEMORIAL entries,
+      NEXT-ROLE.md routing).
+   3. Commit the coordination chore.
+   4. Record the chore commit's SHA in NEXT-ROLE.md as the attestation.
+   Never record a SHA from before the chore commit — that SHA is
+   invalidated by the chore commit even if file contents are
+   bit-identical to it. The attested SHA must equal HEAD at the moment
+   you route to the Reviewer.
+
+   Routing: NEXT-ROLE: REVIEWER | STATUS: READY
+   Append CONFIRMATION entries to MEMORIAL.md.
+
+## Implementer role boundary
+Do not review your own code. Do not change scope.
+Architectural ambiguity → DIAGNOSTIC files. Tactical detail → fix inline
+with a clear commit message.
+
+# ── IMPLEMENTER REINFORCEMENTS ────────────────────────────────────────────────
+# Memorial Updater appends Implementer-specific reinforcement lines here when a
+# violation in this role surfaces. Do not delete; the accumulated history is
+# the compounding value.
+#
+# Example:
+# # REINFORCED 2026-05-08 — Implementer must run failing test BEFORE writing
+# #   implementation. Tests written after passing-implementation are self-confirming.
+

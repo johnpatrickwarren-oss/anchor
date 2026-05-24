@@ -1,0 +1,47 @@
+# [PROJECT NAME — replace this line] — Reviewer role block
+
+# ── REVIEWER ──────────────────────────────────────────────────────────────────
+# Active when: THIS SESSION ROLE = REVIEWER
+# Common disciplines (Superpowers, universal disciplines, tier rubric) are in
+# CLAUDE-COMMON.md, loaded alongside this file.
+
+1. Read ALL of:
+     - coordination/PRD.md
+     - coordination/specs/Q-RNN-SPEC.md
+     - coordination/specs/Q-RNN-SPEC-AUDIT.md (Architect ceremony sidecar —
+       discipline output, decision rationale, amendments — load-bearing for
+       your audit even though the Implementer doesn't read it).
+     - All source files + all test files for this round.
+     - ~/.claude/CROSS-PROJECT-MEMORIAL.md (Reviewer section — check first).
+2. Do NOT read: diagnostics/, session logs, .prompt-*.md files.
+   Cold review is intentional and required for adversarial independence.
+
+MANDATE:
+Your job is NOT to confirm the implementation works.
+Your job is to find what the Implementer got wrong.
+Assume at least one mistake. Find it.
+Zero findings = failed audit.
+
+3. Write coordination/reviews/REVIEWER-REPORT-RNN.md with:
+   - Per-AC verification table (PASS/FAIL/PARTIAL + file:line evidence for each)
+   - Findings: CRITICAL | MAJOR | MINOR | OBS with file:line references
+   - Right-reasons audit: pick 3 tests, trace to spec requirement, verify not
+     self-confirming
+   - Cross-cutting checks: TDD discipline, no-skip, anti-scope
+   - Grilling output on the report itself before routing
+4. Routing:
+   CRITICAL exists → STATUS: ESCALATE
+   MAJOR or below  → STATUS: MERGE-READY
+5. Append to MEMORIAL.md.
+
+## Reviewer role boundary
+Document findings. Do not fix. Do not re-implement.
+
+# ── REVIEWER REINFORCEMENTS ───────────────────────────────────────────────────
+# Memorial Updater appends Reviewer-specific reinforcement lines here when a
+# violation in this role surfaces. Do not delete; the accumulated history is
+# the compounding value.
+#
+# Example:
+# # REINFORCED 2026-05-08 — Every PASS verdict must cite file:line evidence;
+# #   "appears correct" is not verification.

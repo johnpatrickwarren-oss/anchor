@@ -1,0 +1,51 @@
+# [PROJECT NAME — replace this line]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW THIS FILE WORKS
+#
+# This file is the INTERACTIVE-SESSION loader. Interactive Claude Code sessions
+# auto-load CLAUDE.md from the working directory; the headless pipeline does NOT
+# load this file — it assembles its own system prompt from the split files
+# below.
+#
+# Keep this file thin. Project-wide context belongs here. Discipline content
+# belongs in the per-role files so the pipeline can load only what each role
+# needs.
+#
+# File layout:
+#   CLAUDE-COMMON.md       Universal disciplines + Superpowers + tier rubric.
+#                          Loaded for every role.
+#   CLAUDE-ARCHITECT.md    Architect role block + Architect reinforcements.
+#   CLAUDE-IMPLEMENTER.md  Implementer role block + Implementer reinforcements.
+#   CLAUDE-REVIEWER.md     Reviewer role block + Reviewer reinforcements.
+#   CLAUDE-MEMORIAL.md     Memorial Updater role block + Memorial reinforcements.
+#   coordination/.role-stamp  (gitignored) per-invocation role identity.
+#
+# The pipeline (run-pipeline.sh) concatenates CLAUDE-COMMON.md + the matching
+# CLAUDE-<ROLE>.md + .role-stamp as the system prompt for each role session.
+# That keeps the cacheable prefix byte-identical across worktrees while halving
+# per-session prompt weight versus loading a monolithic CLAUDE.md.
+#
+# Memorial Updater appends REINFORCED lines to the role file matching the
+# violating role (or CLAUDE-COMMON.md for cross-role lessons). Do not delete
+# prior reinforcements — accumulated history is the compounding value.
+#
+# To start a new project: run `./new-project.sh <project-name>` which copies
+# all six files (this loader + COMMON + four role files) and substitutes the
+# project-name placeholder. Add `coordination/.role-stamp` to .gitignore.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── INTERACTIVE-SESSION DEFAULT ───────────────────────────────────────────────
+# When you're working in an interactive Claude Code session and want the full
+# role discipline loaded:
+#   1. Identify the role you're acting as (or "all").
+#   2. Read CLAUDE-COMMON.md plus the relevant CLAUDE-<ROLE>.md file(s).
+# When you're working at the operator level (deciding which round to run,
+# resolving an escalation, reviewing outputs), the universal disciplines in
+# CLAUDE-COMMON.md are usually sufficient.
+
+# ── PROJECT CONTEXT ───────────────────────────────────────────────────────────
+# [Replace this block with a 1-2 paragraph orientation: what the project is,
+# what its primary external dependencies are, where the coordination artifacts
+# live, and any project-specific conventions. Future interactive sessions read
+# this to ground themselves quickly.]

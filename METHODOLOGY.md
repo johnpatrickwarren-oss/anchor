@@ -24,9 +24,11 @@ The TPM role specifically distinguishes this pack from most agent frameworks. Mo
 
 The Implementer role can be one or many parallel instances. When work scopes are independent (e.g., two features touching different file trees), running parallel Implementer sessions on isolated `git worktree` branches scales throughput without coordination overhead. See [`skills/07-round-numbering-convention.md`](./skills/07-round-numbering-convention.md) for cross-instance referential discipline.
 
+For multi-cluster parallel execution at the program level (rather than feature level), a sixth role — **Coordinator** — sits above all clusters and owns PRD decomposition, dependency-graph construction, wave sequencing, and wave-gate quality control. The Coordinator is additive to TPM, not a replacement: TPM handles routing inside each cluster (or is collapsed into `NEXT-ROLE.md` state in the automated pipeline); the Coordinator handles which clusters run, in what order, and how their outputs reconcile at wave boundaries. See [`skills/12-coordinator-role.md`](./skills/12-coordinator-role.md) for the full discipline (DAG construction tests, work-unit classification, wave-gate checklist).
+
 ### Templates for coordination-heavy roles
 
-Each of the four coordination-heavy roles (PM, Architect, TPM, Reviewer) has a fillable scaffold under [`templates/`](./templates/). The scaffolds encode the relevant disciplines (pre-emit grilling, anti-scope, P3 axes, severity triage) structurally so the role's output captures discipline by construction rather than by memory.
+Each of the coordination-heavy roles (PM, Architect, TPM, Reviewer, and — for multi-cluster execution — Coordinator) has a fillable scaffold under [`templates/`](./templates/). The scaffolds encode the relevant disciplines (pre-emit grilling, anti-scope, P3 axes, severity triage, dependency-edge verification) structurally so the role's output captures discipline by construction rather than by memory.
 
 | Role | Template | Encodes |
 |---|---|---|
@@ -34,6 +36,7 @@ Each of the four coordination-heavy roles (PM, Architect, TPM, Reviewer) has a f
 | Architect | [`Q-NN-SPEC-TEMPLATE.md`](./templates/Q-NN-SPEC-TEMPLATE.md) | Spec / mechanism / open-Q architect picks / per-file pseudo-code / tests / acceptance / anti-scope / open Qs / P3 ten-axis verification / architect grilling output / Memorial application / timeline / pre-prediction / topic close framing / discipline-archive. |
 | TPM | [`TPM-REPLY-TEMPLATE.md`](./templates/TPM-REPLY-TEMPLATE.md) | Pre-route discipline checklist / TPM grilling output / routing scope (the actual pasteable for downstream) / sequencing context / Memorial state / open coordination items. |
 | Reviewer | [`REVIEWER-REPORT-TEMPLATE.md`](./templates/REVIEWER-REPORT-TEMPLATE.md) | Audit method / per-AC verification table / findings with severity tiers / cross-cutting verification (no-skip, audit-state currency, anti-scope preservation, right-reasons) / severity triage / disposition routing recommendations / audit-process self-check. |
+| Coordinator (multi-cluster) | [`WAVE-PLAN-TEMPLATE.md`](./templates/WAVE-PLAN-TEMPLATE.md) + [`WAVE-GATE-TEMPLATE.md`](./templates/WAVE-GATE-TEMPLATE.md) + [`CLUSTER-HANDOFF-TEMPLATE.md`](./templates/CLUSTER-HANDOFF-TEMPLATE.md) + [`COORDINATOR-MEMORIAL-TEMPLATE.md`](./templates/COORDINATOR-MEMORIAL-TEMPLATE.md) | **Wave-plan** (Coordinator primary output, versioned per revision): PRD decomposition into work units, dependency edges (D1–D4 tests), Claude judgment calls, DAG validation, wave sequencing, tier classifications, pre-emit grilling. **Wave-gate** (one per wave): pre-advance checklist, per-cluster findings with disposition (ADVANCE/RETRY/SCOPE-REDUCE-V1/ROUTE-TO-ARCHITECT), failure handling, resequencing decisions, pre-flags forward, coordinator memorial update, dispatch authorization. **Cluster-handoff** (one per directed dependency edge): source/target WUs, interface contract, verification status, target anti-assume list, halt conditions, verification log, amendment history. **Coordinator-memorial** (append-only): coordinator-level discipline accretion separate from cluster MEMORIAL.md. |
 
 The Implementer role does not have a single canonical template scaffold because Implementer outputs are code, tests, and PRs — these are project-specific and should follow the project's normal code conventions. The Implementer's discipline lives in [`skills/03-four-anchor-defense.md`](./skills/03-four-anchor-defense.md) (T2 anchor), not in a template.
 
@@ -64,6 +67,14 @@ Every non-trivial change passes through four discipline anchors. Each catches wh
 | **T3** | Post-merge | Reviewer | Spec-vs-impl audit + cross-cutting checks |
 
 See [`skills/03-four-anchor-defense.md`](./skills/03-four-anchor-defense.md) for application detail.
+
+> **Naming note:** the four anchors (`T0` / `T1` / `T2` / `T3`) are
+> *temporally-ordered discipline checkpoints*. A separate concept —
+> **round scaling**, which decides how many roles run for a given
+> round — uses verbal names (`solo` / `audit` / `full`) precisely to
+> avoid collision with the four-anchor letter+number names. See
+> [`skills/11-round-scaling.md`](./skills/11-round-scaling.md) for
+> when each tier applies.
 
 ---
 
@@ -156,6 +167,79 @@ Adversarial pre-emit review of TPM's own routing artifacts BEFORE forwarding to 
 The discipline catches TPM-side errors at the source rather than at downstream consumer. See [`skills/01-pre-emit-grilling.md`](./skills/01-pre-emit-grilling.md).
 
 ---
+
+## Automated TPM routing (T1 — pipeline variant)
+
+The TPM role as described above assumes a human reads every coordination artifact
+and writes routing decisions between sessions. In automated pipeline deployments,
+the TPM routing function is replaced by a file-driven state machine — but the
+underlying discipline (T1) is unchanged. The anchors still apply; what changes is
+who or what applies them.
+
+### NEXT-ROLE.md as the routing contract
+
+In automated mode, each role writes its routing decision to `coordination/NEXT-ROLE.md`
+on completion rather than waiting for a human TPM to route it. The file carries:
+
+```
+CURRENT-ROUND: R01
+NEXT-ROLE: IMPLEMENTER
+STATUS: READY | ESCALATE | MERGE-READY | ROUND-COMPLETE | BLOCKED
+
+## Inputs for next role
+- coordination/specs/Q-R01-SPEC.md
+
+## Escalation items
+(bounded question if STATUS = ESCALATE)
+
+## Routing notes
+(sequencing context, if any)
+```
+
+`STATUS: READY` means the role completed its work and the next session can open.
+`STATUS: ESCALATE` is the automated equivalent of the human TPM halting and asking
+for input — it surfaces a bounded question that requires operator judgment, pauses
+the pipeline, and waits for resolution before continuing.
+
+### T1 discipline in automated mode
+
+The TPM grilling checklist (verifying filenames, versions, line numbers, test counts
+are current before routing) runs as part of each role's pre-emit grilling rather
+than as a separate TPM session. The Architect's grilling output includes canonical
+version verification. The Reviewer's pre-emit grilling includes audit-state currency
+verification (confirming it is reviewing the artifact that would actually merge).
+
+This preserves the T1 discipline without requiring a dedicated TPM session for
+every handoff — appropriate when the human operator has validated the methodology
+and trusts the role-level grilling to catch routing errors.
+
+### Escalation as the human gate
+
+In automated mode, the human operator is not absent — they are present at escalations.
+An escalation is set when a role encounters a condition it cannot resolve without a
+design decision that belongs to the operator:
+
+- Spec ambiguity with two valid interpretations (Architect → operator)
+- Spec claim contradicts codebase reality (Implementer → operator)
+- CRITICAL finding with no clear resolution path (Reviewer → operator)
+
+The escalation item is always a bounded question — not "what should I do" but
+"option A does X (consequence Y), option B does Z (consequence W), which?" The
+operator reads the question, resolves it, sets `STATUS: READY`, and the pipeline
+continues. This is the minimum viable human-in-the-loop pattern: present at
+decisions, absent from execution.
+
+### What automated mode does not replace
+
+The four-anchor defense (T0/T1/T2/T3) is fully preserved in automated mode.
+What changes is the mechanism of T1, not its substance. The disciplines that
+require human judgment — priority adjudication, architectural direction, accepting
+or rejecting Reviewer findings — remain with the operator. The disciplines that
+are mechanically verifiable — file existence, version currency, role boundary
+adherence, TDD sequence — are enforced by the role prompts and escalation rules.
+
+See [`integrations/superpowers-claude-code/`](integrations/superpowers-claude-code/)
+for a complete reference implementation of automated mode.
 
 ## Pre-route checklist (T1)
 
