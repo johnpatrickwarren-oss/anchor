@@ -17,7 +17,7 @@ Two benefits:
 1. **Implementer cold-read weight drops ~30%.** The Implementer doesn't carry the Architect's reasoning ballast in context, which preserves cold-start discipline (Implementer encounters the contract fresh, not pre-influenced by Architect's reasoning).
 2. **Reviewer audit gains structured discipline trail.** All discipline ceremony lives in one predictable file location, making cross-spec discipline-audit grep'able.
 
-The pattern is RECOMMENDED for any project where spec ceremony exceeds ~30% of total spec content. Projects with thin specs (e.g., audit-tier rounds with self-spec at ≤2 pages) may inline ceremony in the spec proper without harm.
+The pattern is REQUIRED for Tessera Phase 1+ specs and RECOMMENDED for any project where spec ceremony exceeds ~30% of total spec content. Projects with thin specs (e.g., audit-tier rounds with self-spec at ≤2 pages) may inline ceremony in the spec proper without harm.
 
 ---
 
@@ -169,4 +169,4 @@ How Q[N] resolves drives next-cycle pick:
 
 ---
 
-_Audit sidecar template based on [`templates/Q-NN-SPEC-TEMPLATE.md`](Q-NN-SPEC-TEMPLATE.md) + [`skills/01-pre-emit-grilling.md`](../skills/01-pre-emit-grilling.md)._
+_Audit sidecar template based on [`templates/Q-NN-SPEC-TEMPLATE.md`](Q-NN-SPEC-TEMPLATE.md) + [`skills/01-pre-emit-grilling.md`](../skills/01-pre-emit-grilling.md). Pattern derived from Tessera Phase 1 R01-R10 audit-sidecar usage; integrated into anchor templates 2026-05-17._

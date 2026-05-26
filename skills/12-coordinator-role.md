@@ -410,8 +410,9 @@ migration file lands on disk.
 This two-layer design recovers parallelism for projects where many
 work units add migrations against unrelated tables (a common pattern
 in early-phase feature work). A strict "any migration touch =
-different wave" rule would over-serialize these cases, as observed
-during the dry-run that motivated this refinement.
+different wave" rule would over-serialize these cases — see
+`case-studies/archfolio-coordinator-dryrun/DRYRUN-OBSERVATIONS.md`
+for the empirical finding that motivated this refinement.
 
 **Lock details (both layers' fallback when a D5 miss occurs at
 execution):**

@@ -21,8 +21,8 @@
 #
 # Options:
 #   --repo-root <path>    Repo to resolve cited files against. Defaults to
-#                         $ANCHOR_INHERITED_REPO_ROOT, or `..` (assumes the
-#                         inherited repo is a sibling of the project root).
+#                         $ANCHOR_INHERITED_REPO_ROOT, or `../deploysignal`
+#                         (matches typical sibling-clone layout).
 #   --strict              Exit non-zero on any mismatch / unresolved citation.
 #                         Default is informational (exits 0 even on mismatch;
 #                         emits warnings on stderr).
@@ -57,7 +57,7 @@
 set -euo pipefail
 
 spec_file=""
-repo_root="${ANCHOR_INHERITED_REPO_ROOT:-..}"
+repo_root="${ANCHOR_INHERITED_REPO_ROOT:-../deploysignal}"
 strict=0
 
 while [[ $# -gt 0 ]]; do

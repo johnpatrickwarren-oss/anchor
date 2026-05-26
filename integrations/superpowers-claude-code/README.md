@@ -7,7 +7,7 @@ the agent runtime.
 
 **Origin:** Developed and validated while building a production quoting and contract
 management application. This integration represents the evolution of the manual
-coordination pattern (see [`case-studies/deploysignal-coordination-trail.md`](../../case-studies/deploysignal-coordination-trail.md)) into a fully autonomous
+coordination pattern (see `case-studies/deploysignal/`) into a fully autonomous
 pipeline where the human operator writes requirements and handles escalations,
 while agents execute all four roles.
 

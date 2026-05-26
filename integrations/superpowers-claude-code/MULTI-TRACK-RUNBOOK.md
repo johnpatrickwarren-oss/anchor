@@ -47,6 +47,7 @@ unlock multi-track today without rewriting `run-pipeline.sh`.
   scope-authoring step. Authoring scope blocks is the Coordinator's
   job per [`skills/12-coordinator-role.md`](../../skills/12-coordinator-role.md)
   — derived mechanically from the WAVE-PLAN's Step 1 work-unit table.
+  Worked example: [`case-studies/archfolio-coordinator-dryrun/wave-1-cluster-scopes/`](../../case-studies/archfolio-coordinator-dryrun/wave-1-cluster-scopes/).
 
 ---
 
@@ -75,11 +76,11 @@ as historical first) and commits it as the routing commit. The cluster
 session can launch directly into the pipeline; no scope-authoring step
 needed.
 
-**Recommended invocation** (scopes pre-authored as Coordinator output,
-one file per cluster, kept under `coordination/wave-NN-cluster-scopes/`):
+**Recommended invocation** (ArchFolio Wave 1, scopes pre-authored as
+Coordinator output):
 
 ```bash
-SCOPE_DIR=coordination/wave-01-cluster-scopes
+SCOPE_DIR=~/anchor/case-studies/archfolio-coordinator-dryrun/wave-1-cluster-scopes
 
 ./scripts/multi-track-cluster-setup.sh wu-p2-1 R40 full  --scope $SCOPE_DIR/wu-p2-1.md
 ./scripts/multi-track-cluster-setup.sh wu-p1-1 R41 audit --scope $SCOPE_DIR/wu-p1-1.md

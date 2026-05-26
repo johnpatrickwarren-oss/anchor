@@ -62,7 +62,7 @@ This pack adds four disciplines those frameworks do not:
 ## Anchor + Superpowers — how they compose
 
 Anchor was developed independently from the worked example in
-[`case-studies/deploysignal-coordination-trail.md`](case-studies/deploysignal-coordination-trail.md) before its author encountered
+[`case-studies/deploysignal/`](case-studies/) before its author encountered
 [Superpowers](https://github.com/obra/superpowers). The decision to compose
 the two — rather than reinvent the phase-level disciplines Superpowers
 already covers — is what produced the integration that ships in this repo.
@@ -119,7 +119,7 @@ The pattern Anchor was developed from. One chat instance per role, a human TPM i
 
 **How it works:** Each role runs in a separate chat window with per-chat project instructions setting role identity. The human TPM reads Architect output, verifies it against the pre-route checklist, and pastes the routing artifact into the Implementer chat. The same human reads Reviewer output and decides what routes back for rework. The `templates/` directory provides fillable scaffolds for each role's primary artifact.
 
-**Reference:** [`case-studies/deploysignal-coordination-trail.md`](case-studies/deploysignal-coordination-trail.md) — the full worked example that produced this methodology, run entirely in this mode.
+**Reference:** [`case-studies/deploysignal/`](case-studies/) — the full worked example that produced this methodology, run entirely in this mode.
 
 ---
 
