@@ -129,9 +129,9 @@ Enumerate ALL architectural layers between calibration source and runtime consum
 
 The load-bearing forward-looking discipline IS the explicit enumeration; probability ranking can be off without invalidating the discipline. Track violations vs confirmations.
 
-**Memorial F — four sub-rules at brief-drafting time**
+**Memorial F — five sub-rules at brief-drafting time**
 
-Each sub-rule has a distinct trigger condition. Consult all four; apply each whose trigger fires.
+Each sub-rule has a distinct trigger condition. Consult all five; apply each whose trigger fires.
 
 | # | Sub-rule | Trigger | Apply |
 |---|---|---|---|
@@ -139,6 +139,7 @@ Each sub-rule has a distinct trigger condition. Consult all four; apply each who
 | 2 | **Schema-precedent-recheck** | Schema additions or modifications | Verify all consumers have null-checks; grep for the field name |
 | 3 | **Acceptance-criterion-coherence** | New acceptance criterion introduced | Verify criterion makes sense against existing methodology notes |
 | 4 | **Pre-existing-property-coherence** | Spec claims a behavior should hold | Verify behavior wasn't already documented as the opposite somewhere |
+| 5 | **Instrumented-caveat discipline** | Measurement/AC value materially diverges from what the reader infers from its name | Emit a parallel measurement of the omitted portion in the same artifact, OR rename the column to make partiality explicit, OR widen to the full cost — never publish the fraction with only a footnote. See [`skills/16-instrumented-caveat-discipline.md`](./skills/16-instrumented-caveat-discipline.md) and [`case-studies/clustersynth-r07-instrumented-caveat.md`](./case-studies/clustersynth-r07-instrumented-caveat.md). |
 
 ---
 
