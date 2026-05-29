@@ -126,25 +126,65 @@ export class AgentSdkAdapter implements RuntimeAdapter {
   async spawnRole(spec: RoleSpec): Promise<RoleResult> {
     const query: QueryFn = this.opts.queryFn ?? (await import('@anthropic-ai/claude-agent-sdk' as string)).query;
 
+    // Collect the stream defensively: some SDK builds THROW on turn-budget exhaustion
+    // (rather than yielding an error result), and an unguarded throw here would crash the
+    // whole run, discarding the per-role usage table + the files the agent already wrote.
     const collected: SdkMessage[] = [];
     let result: SdkResultMessage | undefined;
-    for await (const message of query({ prompt: buildPrompt(spec), options: buildQueryOptions(spec, this.opts) })) {
-      collected.push(message);
-      if (message.type === 'result') result = message as SdkResultMessage;
+    let thrown: unknown;
+    try {
+      for await (const message of query({ prompt: buildPrompt(spec), options: buildQueryOptions(spec, this.opts) })) {
+        collected.push(message);
+        if (message.type === 'result') result = message as SdkResultMessage;
+      }
+    } catch (e) {
+      thrown = e;
     }
 
     const finalText = lastAssistantText(collected);
+    const artifacts = extractArtifacts(collected);
+    const usage = mapUsage(result?.usage);
+    const handoff = { model: spec.model, cost_usd: result?.total_cost_usd ?? 0, summary: finalText.slice(0, 1000) };
+
+    // Turn-budget exhaustion — whether surfaced as a thrown error or an `error_max_turns`
+    // result — degrades to a RESUMABLE escalation (the engine PAUSES), preserving the
+    // partial artifacts + any usage. Raising --maxTurns and resuming re-runs the role.
+    // This is recoverable operator state, not a hard failure, so it must not crash or
+    // dead-end as BLOCKED.
+    if (isMaxTurns(result, thrown)) {
+      return {
+        role: spec.role,
+        status: 'ESCALATE',
+        artifacts,
+        handoff,
+        usage,
+        escalation: {
+          question:
+            `Role "${spec.role}" exhausted its turn budget before signalling completion ` +
+            `(${artifacts.length} file(s) already written). Raise --maxTurns and resume, ` +
+            `or accept the partial result.`,
+          raisedBy: spec.role,
+        },
+      };
+    }
+
+    // A genuine (non-max-turns) error still surfaces — those are real failures, not
+    // recoverable-by-resume partial progress.
+    if (thrown !== undefined) throw thrown;
+
     const det = result && result.subtype !== 'success'
       ? { status: 'BLOCKED' as RoleStatus }
       : parseStatusContract(finalText, spec.role);
 
-    return {
-      role: spec.role,
-      status: det.status,
-      artifacts: extractArtifacts(collected),
-      handoff: { model: spec.model, cost_usd: result?.total_cost_usd ?? 0, summary: finalText.slice(0, 1000) },
-      usage: mapUsage(result?.usage),
-      escalation: det.escalation,
-    };
+    return { role: spec.role, status: det.status, artifacts, handoff, usage, escalation: det.escalation };
   }
+}
+
+// True iff the role ended because it ran out of turns (resumable), as either an
+// `error_max_turns` result subtype or a thrown "maximum number of turns" error.
+export function isMaxTurns(result: SdkResultMessage | undefined, thrown: unknown): boolean {
+  if (result?.subtype === 'error_max_turns') return true;
+  if (thrown === undefined) return false;
+  const msg = thrown instanceof Error ? thrown.message : String(thrown);
+  return /max(?:imum)?[ _-]?(?:number of )?turns/i.test(msg);
 }

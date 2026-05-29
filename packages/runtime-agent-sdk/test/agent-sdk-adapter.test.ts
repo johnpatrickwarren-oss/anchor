@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, buildQueryOptions,
+  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, buildQueryOptions, isMaxTurns,
 } from '../src/index.ts';
 import type { SdkMessage } from '../src/index.ts';
 
@@ -11,6 +11,15 @@ const spec = { role: 'implementer', model: 'claude-sonnet-4-6', contextRefs: ['c
 function fakeQuery(messages: SdkMessage[]) {
   return async function* () {
     for (const m of messages) yield m;
+  }();
+}
+
+// A stream that yields some messages, then THROWS (mirrors SDK builds that throw on
+// turn-budget exhaustion rather than yielding an error result).
+function throwingQuery(messages: SdkMessage[], error: Error) {
+  return async function* () {
+    for (const m of messages) yield m;
+    throw error;
   }();
 }
 
@@ -41,13 +50,52 @@ test('an ESCALATE in the final text surfaces a structured escalation', async () 
   assert.equal(r.escalation!.raisedBy, 'implementer');
 });
 
-test('an SDK error result maps to BLOCKED', async () => {
+test('a non-max-turns SDK error result maps to BLOCKED', async () => {
   const stream: SdkMessage[] = [
     { type: 'assistant', message: { content: [{ type: 'text', text: 'partial' }] } },
-    { type: 'result', subtype: 'error_max_turns', usage: { input_tokens: 1, output_tokens: 1 } },
+    { type: 'result', subtype: 'error_during_execution', usage: { input_tokens: 1, output_tokens: 1 } },
   ];
   const r = await new AgentSdkAdapter({ queryFn: () => fakeQuery(stream) }).spawnRole(spec as never);
   assert.equal(r.status, 'BLOCKED');
+});
+
+test('an error_max_turns result degrades to a resumable ESCALATE, preserving usage + artifacts', async () => {
+  const stream: SdkMessage[] = [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: 'coverage.ts' } }, { type: 'text', text: 'partial' }] } },
+    { type: 'result', subtype: 'error_max_turns', total_cost_usd: 0.9, usage: { input_tokens: 3, output_tokens: 7, cache_creation_input_tokens: 10, cache_read_input_tokens: 20 } },
+  ];
+  const r = await new AgentSdkAdapter({ queryFn: () => fakeQuery(stream) }).spawnRole(spec as never);
+  assert.equal(r.status, 'ESCALATE');
+  assert.match(r.escalation!.question, /turn budget|maxTurns/i);
+  assert.deepEqual(r.artifacts, ['coverage.ts']);          // partial work preserved
+  assert.deepEqual(r.usage, { input: 3, cache_creation: 10, cache_read: 20, output: 7 }); // usage preserved
+});
+
+test('a THROWN max-turns error degrades to a resumable ESCALATE (does not crash the run)', async () => {
+  const before: SdkMessage[] = [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: 'coverage.ts' } }] } },
+  ];
+  const q = () => throwingQuery(before, new Error('Reached maximum number of turns (25)'));
+  const r = await new AgentSdkAdapter({ queryFn: q }).spawnRole(spec as never);
+  assert.equal(r.status, 'ESCALATE');
+  assert.equal(r.escalation!.raisedBy, 'implementer');
+  assert.deepEqual(r.artifacts, ['coverage.ts']);          // files written before the throw survive
+});
+
+test('a genuine (non-max-turns) thrown error still surfaces (not swallowed)', async () => {
+  const q = () => throwingQuery([], new Error('ECONNREFUSED: auth endpoint unreachable'));
+  await assert.rejects(
+    () => new AgentSdkAdapter({ queryFn: q }).spawnRole(spec as never),
+    /ECONNREFUSED/,
+  );
+});
+
+test('isMaxTurns recognizes the result subtype and thrown messages, not unrelated errors', () => {
+  assert.equal(isMaxTurns({ type: 'result', subtype: 'error_max_turns' } as never, undefined), true);
+  assert.equal(isMaxTurns(undefined, new Error('Reached maximum number of turns (25)')), true);
+  assert.equal(isMaxTurns(undefined, new Error('max-turns exceeded')), true);
+  assert.equal(isMaxTurns(undefined, new Error('network timeout')), false);
+  assert.equal(isMaxTurns({ type: 'result', subtype: 'success' } as never, undefined), false);
 });
 
 test('mapUsage handles missing fields (all zero)', () => {
