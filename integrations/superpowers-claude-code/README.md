@@ -5,6 +5,8 @@ A complete, tested implementation of Anchor's automated pipeline mode using
 layer and [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) as
 the agent runtime.
 
+> **Two runners, one methodology.** This `run-pipeline.sh` (bash + Claude Code sessions) is the **battle-tested production path**. The [`@anchor/*` packages](../../packages) (`core`/`runtime-agent-sdk`/`cli`) are an **experimental programmatic path** that runs the same four-role cycle with the disciplines enforced as code. They share rules where it matters: the routing scripts here (`tier-router.ts`, `mu-/impl-model-select.ts`) are CLI wrappers whose canonical rule source is [`@anchor/core/routing`](../../packages/core/src/routing) — `tier-router.ts` now delegates to it directly. Use this pipeline for production today; reach for the tool for machine-enforced gates + the memorial learning loop.
+
 **Origin:** Developed and validated while building a production quoting and contract
 management application. This integration represents the evolution of the manual
 coordination pattern (see `case-studies/deploysignal/`) into a fully autonomous

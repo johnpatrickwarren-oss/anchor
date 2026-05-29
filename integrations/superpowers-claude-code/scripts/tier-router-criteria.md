@@ -1,4 +1,5 @@
 # Tier-routing criteria (R73)
+<!-- CANONICAL: the rules below are implemented in @anchor/core/routing (classifyTier); scripts/tier-router.ts now delegates to it. Keep this doc in sync. -->
 
 Quick-reference for the tier-router heuristic classifier. Same rules as the heuristic engine in `scripts/tier-router.ts`.
 

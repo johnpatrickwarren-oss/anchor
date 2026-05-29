@@ -1,4 +1,5 @@
 // scripts/impl-model-select.ts — Implementer model selector.
+// CANONICAL: @anchor/core/routing.selectImplementerClass is the source of truth for these rules; this CLI mirrors it (full code-merge tracked as a follow-up).
 // Outputs JSON {round, model, model_class, rationale, decision_path, selector_version, matched_markers, model_source}.
 // Bash invokes this and parses the .model field to set MODEL_IMPLEMENTER (when MODEL_ROUTING=true).
 //

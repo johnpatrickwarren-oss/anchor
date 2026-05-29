@@ -1,0 +1,6 @@
+{
+  "name": "@anchor/superpowers-integration",
+  "private": true,
+  "type": "module",
+  "description": "Anchor bash overnight-pipeline + its TypeScript role-routing scripts (run via Node type-stripping)."
+}
