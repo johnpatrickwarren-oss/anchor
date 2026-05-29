@@ -26,7 +26,7 @@ export function defaultContext(): CliContext {
     stdout: (s) => console.log(s),
     makeAdapter: (flags) => bool(flags, 'mock')
       ? new MockRuntimeAdapter()
-      : new AgentSdkAdapter({ cwd: str(flags, 'cwd') ?? process.cwd(), maxTurns: Number(str(flags, 'maxTurns')) || 12, permissionMode: 'acceptEdits' }),
+      : new AgentSdkAdapter({ cwd: str(flags, 'cwd') ?? process.cwd(), maxTurns: Number(str(flags, 'maxTurns')) || 40, permissionMode: 'acceptEdits' }),
     makePersistence: (path) => path ? new JsonFilePersistence(path) : new MemoryPersistence(),
   };
 }
@@ -45,7 +45,12 @@ export function renderRoute(r: RouteResult): string {
 export function renderRun(r: RunResult): string {
   const rows = r.phases.map((p) => `  ${p.role.padEnd(12)} ${p.model.padEnd(28)} ${p.status.padEnd(9)} out=${p.usage.output} cache_rd=${p.usage.cache_read}`).join('\n');
   const warn = r.warnings.length ? `\nwarnings (advisory; --strict to block):\n${r.warnings.map((w) => `  ⚠ ${w}`).join('\n')}` : '';
-  return `round ${r.roundId} [${r.tier}] -> ${r.status}\n${rows}${warn}\n${r.CAVEAT}`;
+  // PAUSED is recoverable operator state (e.g. an escalation or a turn-budget exhaustion):
+  // surface why + how to resume, rather than letting it read like a silent stop.
+  const paused = r.status === 'PAUSED'
+    ? `\npaused at: ${r.pausedAt ?? '?'}${r.escalation ? `\n  ↳ ${r.escalation.question}` : ''}\n  resume with a higher --maxTurns (or resolve the escalation) to continue.`
+    : '';
+  return `round ${r.roundId} [${r.tier}] -> ${r.status}\n${rows}${warn}${paused}\n${r.CAVEAT}`;
 }
 
 // ── anchor route ──

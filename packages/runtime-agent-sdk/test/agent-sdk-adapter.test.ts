@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, buildQueryOptions,
+  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, buildQueryOptions, isMaxTurns, isTransient,
 } from '../src/index.ts';
 import type { SdkMessage } from '../src/index.ts';
+
+const noSleep = async () => {}; // inject so retry backoff doesn't add real delay in tests
 
 // A RoleSpec-shaped object (types are erased at runtime; the engine passes this shape).
 const spec = { role: 'implementer', model: 'claude-sonnet-4-6', contextRefs: ['coordination/specs/Q-R01-SPEC.md'], prompt: 'Implement X.', tools: ['Read', 'Write', 'Bash'] };
@@ -11,6 +13,15 @@ const spec = { role: 'implementer', model: 'claude-sonnet-4-6', contextRefs: ['c
 function fakeQuery(messages: SdkMessage[]) {
   return async function* () {
     for (const m of messages) yield m;
+  }();
+}
+
+// A stream that yields some messages, then THROWS (mirrors SDK builds that throw on
+// turn-budget exhaustion rather than yielding an error result).
+function throwingQuery(messages: SdkMessage[], error: Error) {
+  return async function* () {
+    for (const m of messages) yield m;
+    throw error;
   }();
 }
 
@@ -41,13 +52,88 @@ test('an ESCALATE in the final text surfaces a structured escalation', async () 
   assert.equal(r.escalation!.raisedBy, 'implementer');
 });
 
-test('an SDK error result maps to BLOCKED', async () => {
+test('a non-max-turns SDK error result maps to BLOCKED', async () => {
   const stream: SdkMessage[] = [
     { type: 'assistant', message: { content: [{ type: 'text', text: 'partial' }] } },
-    { type: 'result', subtype: 'error_max_turns', usage: { input_tokens: 1, output_tokens: 1 } },
+    { type: 'result', subtype: 'error_during_execution', usage: { input_tokens: 1, output_tokens: 1 } },
   ];
   const r = await new AgentSdkAdapter({ queryFn: () => fakeQuery(stream) }).spawnRole(spec as never);
   assert.equal(r.status, 'BLOCKED');
+});
+
+test('an error_max_turns result degrades to a resumable ESCALATE, preserving usage + artifacts', async () => {
+  const stream: SdkMessage[] = [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: 'coverage.ts' } }, { type: 'text', text: 'partial' }] } },
+    { type: 'result', subtype: 'error_max_turns', total_cost_usd: 0.9, usage: { input_tokens: 3, output_tokens: 7, cache_creation_input_tokens: 10, cache_read_input_tokens: 20 } },
+  ];
+  const r = await new AgentSdkAdapter({ queryFn: () => fakeQuery(stream) }).spawnRole(spec as never);
+  assert.equal(r.status, 'ESCALATE');
+  assert.match(r.escalation!.question, /turn budget|maxTurns/i);
+  assert.deepEqual(r.artifacts, ['coverage.ts']);          // partial work preserved
+  assert.deepEqual(r.usage, { input: 3, cache_creation: 10, cache_read: 20, output: 7 }); // usage preserved
+});
+
+test('a THROWN max-turns error degrades to a resumable ESCALATE (does not crash the run)', async () => {
+  const before: SdkMessage[] = [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: 'coverage.ts' } }] } },
+  ];
+  const q = () => throwingQuery(before, new Error('Reached maximum number of turns (25)'));
+  const r = await new AgentSdkAdapter({ queryFn: q }).spawnRole(spec as never);
+  assert.equal(r.status, 'ESCALATE');
+  assert.equal(r.escalation!.raisedBy, 'implementer');
+  assert.deepEqual(r.artifacts, ['coverage.ts']);          // files written before the throw survive
+});
+
+test('a transient error is retried then succeeds (no crash, READY)', async () => {
+  let calls = 0;
+  const okStream: SdkMessage[] = [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: 'x.ts' } }, { type: 'text', text: 'done' }] } },
+    { type: 'result', subtype: 'success', usage: { input_tokens: 1, output_tokens: 2 } },
+  ];
+  // Throw a transient error on the first two attempts, succeed on the third.
+  const q = () => (calls++ < 2 ? throwingQuery([], new Error('API Error: 529 Overloaded')) : fakeQuery(okStream));
+  const r = await new AgentSdkAdapter({ queryFn: q, sleep: noSleep }).spawnRole(spec as never);
+  assert.equal(r.status, 'READY');
+  assert.deepEqual(r.artifacts, ['x.ts']);
+  assert.equal(calls, 3); // 2 transient throws + 1 success
+});
+
+test('a transient error that never clears degrades to a resumable ESCALATE (bounded retries, no crash)', async () => {
+  let calls = 0;
+  const q = () => { calls++; return throwingQuery([], new Error('socket connection closed unexpectedly')); };
+  const r = await new AgentSdkAdapter({ queryFn: q, sleep: noSleep, maxRetries: 2 }).spawnRole(spec as never);
+  assert.equal(r.status, 'ESCALATE');
+  assert.match(r.escalation!.question, /socket connection closed/i);
+  assert.equal(calls, 3); // initial + 2 retries, then give up gracefully
+});
+
+test('a genuine (non-transient) error degrades to ESCALATE without retrying (preserve-on-error)', async () => {
+  let calls = 0;
+  const before: SdkMessage[] = [{ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: 'partial.ts' } }] } }];
+  const q = () => { calls++; return throwingQuery(before, new Error('Invalid API key — please run /login')); };
+  const r = await new AgentSdkAdapter({ queryFn: q, sleep: noSleep }).spawnRole(spec as never);
+  assert.equal(r.status, 'ESCALATE');           // never crashes
+  assert.match(r.escalation!.question, /Invalid API key/);
+  assert.deepEqual(r.artifacts, ['partial.ts']); // partial work preserved
+  assert.equal(calls, 1);                        // non-transient → no retry
+});
+
+test('isTransient flags retryable server/network errors, not terminal ones', () => {
+  assert.equal(isTransient(new Error('API Error: 529 Overloaded')), true);
+  assert.equal(isTransient(new Error('socket connection closed unexpectedly')), true);
+  assert.equal(isTransient(new Error('read ECONNRESET')), true);
+  assert.equal(isTransient(new Error('429 Too Many Requests')), true);
+  assert.equal(isTransient(new Error('Invalid API key')), false);
+  assert.equal(isTransient(new Error('Reached maximum number of turns (25)')), false);
+  assert.equal(isTransient(undefined), false);
+});
+
+test('isMaxTurns recognizes the result subtype and thrown messages, not unrelated errors', () => {
+  assert.equal(isMaxTurns({ type: 'result', subtype: 'error_max_turns' } as never, undefined), true);
+  assert.equal(isMaxTurns(undefined, new Error('Reached maximum number of turns (25)')), true);
+  assert.equal(isMaxTurns(undefined, new Error('max-turns exceeded')), true);
+  assert.equal(isMaxTurns(undefined, new Error('network timeout')), false);
+  assert.equal(isMaxTurns({ type: 'result', subtype: 'success' } as never, undefined), false);
 });
 
 test('mapUsage handles missing fields (all zero)', () => {

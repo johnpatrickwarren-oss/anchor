@@ -17,6 +17,11 @@ export interface AgentSdkAdapterOptions {
   permissionMode?: SdkQueryOptions['permissionMode']; // default 'acceptEdits' (autonomous role work)
   maxTurns?: number;
   systemPromptFor?: (role: Role) => string;
+  // Transient-error resilience: retry the SDK call on retryable failures (529 Overloaded,
+  // socket close, ECONNRESET, …) with exponential backoff. Default 3 retries (4 attempts).
+  maxRetries?: number;
+  retryBaseDelayMs?: number; // default 500; delay = base × 2^attempt, capped at 8s
+  sleep?: (ms: number) => Promise<void>; // injectable for tests (default = real timer)
 }
 
 // ── Pure helpers (unit-tested) ───────────────────────────────────────────────
@@ -125,26 +130,109 @@ export class AgentSdkAdapter implements RuntimeAdapter {
 
   async spawnRole(spec: RoleSpec): Promise<RoleResult> {
     const query: QueryFn = this.opts.queryFn ?? (await import('@anthropic-ai/claude-agent-sdk' as string)).query;
+    const maxRetries = this.opts.maxRetries ?? 3;
+    const baseDelay = this.opts.retryBaseDelayMs ?? 500;
+    const sleep = this.opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-    const collected: SdkMessage[] = [];
+    // Collect the stream defensively + with bounded retry. The SDK can THROW mid-stream:
+    // on TRANSIENT failures (529 Overloaded, socket close, ECONNRESET) we retry with
+    // exponential backoff — re-running the role from scratch, since the SDK doesn't
+    // checkpoint. On non-transient throws we stop and degrade gracefully below. Either
+    // way spawnRole NEVER throws: an unguarded throw would crash the whole run and
+    // discard the per-role usage + the files the agent already wrote.
+    let collected: SdkMessage[] = [];
     let result: SdkResultMessage | undefined;
-    for await (const message of query({ prompt: buildPrompt(spec), options: buildQueryOptions(spec, this.opts) })) {
-      collected.push(message);
-      if (message.type === 'result') result = message as SdkResultMessage;
+    let thrown: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      collected = [];
+      result = undefined;
+      thrown = undefined;
+      try {
+        for await (const message of query({ prompt: buildPrompt(spec), options: buildQueryOptions(spec, this.opts) })) {
+          collected.push(message);
+          if (message.type === 'result') result = message as SdkResultMessage;
+        }
+      } catch (e) {
+        thrown = e;
+      }
+      // Retry only transient errors, and only while attempts remain. maxTurns is NOT
+      // transient (re-running would just re-exhaust the budget) — it falls through to
+      // the resumable-escalation path below.
+      if (thrown !== undefined && isTransient(thrown) && !isMaxTurns(result, thrown) && attempt < maxRetries) {
+        await sleep(Math.min(baseDelay * 2 ** attempt, 8000));
+        continue;
+      }
+      break;
     }
 
     const finalText = lastAssistantText(collected);
+    const artifacts = extractArtifacts(collected);
+    const usage = mapUsage(result?.usage);
+    const handoff = { model: spec.model, cost_usd: result?.total_cost_usd ?? 0, summary: finalText.slice(0, 1000) };
+
+    // Turn-budget exhaustion — whether surfaced as a thrown error or an `error_max_turns`
+    // result — degrades to a RESUMABLE escalation (the engine PAUSES), preserving the
+    // partial artifacts + any usage. Raising --maxTurns and resuming re-runs the role.
+    if (isMaxTurns(result, thrown)) {
+      return degraded(spec, artifacts, usage, handoff,
+        `exhausted its turn budget before signalling completion (${artifacts.length} file(s) already written). ` +
+        `Raise --maxTurns and resume, or accept the partial result.`);
+    }
+
+    // Universal preserve-on-error: any terminal error (transient retries exhausted, or a
+    // genuine failure) degrades to a resumable escalation with partial state preserved —
+    // NEVER a bare crash that discards the run. The error text is surfaced in the
+    // escalation so the operator sees what happened and can resume after fixing it.
+    if (thrown !== undefined) {
+      const msg = thrown instanceof Error ? thrown.message : String(thrown);
+      return degraded(spec, artifacts, usage, handoff,
+        `failed after ${maxRetries} retr${maxRetries === 1 ? 'y' : 'ies'}: ${msg.slice(0, 300)}. ` +
+        `${artifacts.length} file(s) preserved; resume to retry the role.`);
+    }
+
     const det = result && result.subtype !== 'success'
       ? { status: 'BLOCKED' as RoleStatus }
       : parseStatusContract(finalText, spec.role);
 
-    return {
-      role: spec.role,
-      status: det.status,
-      artifacts: extractArtifacts(collected),
-      handoff: { model: spec.model, cost_usd: result?.total_cost_usd ?? 0, summary: finalText.slice(0, 1000) },
-      usage: mapUsage(result?.usage),
-      escalation: det.escalation,
-    };
+    return { role: spec.role, status: det.status, artifacts, handoff, usage, escalation: det.escalation };
   }
+}
+
+// Build a resumable-escalation RoleResult that preserves partial work. The engine turns
+// an ESCALATE with no onEscalate handler into a PAUSED (resumable) run.
+function degraded(
+  spec: RoleSpec,
+  artifacts: string[],
+  usage: Usage,
+  handoff: RoleResult['handoff'],
+  reason: string,
+): RoleResult {
+  return {
+    role: spec.role,
+    status: 'ESCALATE',
+    artifacts,
+    handoff,
+    usage,
+    escalation: { question: `Role "${spec.role}" ${reason}`, raisedBy: spec.role },
+  };
+}
+
+// True iff the role ended because it ran out of turns (resumable), as either an
+// `error_max_turns` result subtype or a thrown "maximum number of turns" error.
+export function isMaxTurns(result: SdkResultMessage | undefined, thrown: unknown): boolean {
+  if (result?.subtype === 'error_max_turns') return true;
+  if (thrown === undefined) return false;
+  const msg = thrown instanceof Error ? thrown.message : String(thrown);
+  return /max(?:imum)?[ _-]?(?:number of )?turns/i.test(msg);
+}
+
+// True iff a thrown error is a transient server/network failure worth retrying:
+// overload (529), rate limit (429), gateway errors (502/503/504), and socket/connection
+// drops. Deliberately conservative — anything not matched is treated as terminal.
+export function isTransient(thrown: unknown): boolean {
+  if (thrown === undefined || thrown === null) return false;
+  const msg = (thrown instanceof Error ? thrown.message : String(thrown)).toLowerCase();
+  return /\b(429|502|503|504|529)\b/.test(msg)
+    || /overloaded|rate.?limit|too many requests/.test(msg)
+    || /socket|econnreset|econnrefused|etimedout|epipe|network|fetch failed|connection (?:closed|reset|error)|terminated/.test(msg);
 }
