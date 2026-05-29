@@ -209,7 +209,7 @@ A future release will package this pack as a Claude Code plugin that can be inst
 
 ## License
 
-License intentionally not specified at this stage. Contact me (john.patrick.warren@gmail.com) for commercial or deployment use.
+Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE). © 2026 John Warren. You may use, modify, and redistribute under the Apache-2.0 terms (preserve the copyright notice; the license includes an explicit patent grant). For commercial or deployment questions, contact john.patrick.warren@gmail.com.
 
 ## Contact
 
