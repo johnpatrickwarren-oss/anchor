@@ -43,13 +43,14 @@ export interface DirectiveRunMeta {
   runDate: string;
   task?: string; // defaults to the directive text
   tierOverride?: Tier;
+  specPath?: string; // canonical spec path (threaded to the Architect + gates)
 }
 
 // Self-routed run: classify the directive, derive per-role models, then run.
 // Explicit deps.modelOverrides still win over routing-derived ones.
 export function runRoundFromDirective(directive: string, deps: EngineDeps, meta: DirectiveRunMeta) {
   const route = routeRound(directive, { manifest: deps.manifest, tierOverride: meta.tierOverride });
-  const config: RoundConfig = { roundId: meta.roundId, tier: route.tier, task: meta.task ?? directive, runDate: meta.runDate };
+  const config: RoundConfig = { roundId: meta.roundId, tier: route.tier, task: meta.task ?? directive, runDate: meta.runDate, specPath: meta.specPath };
   const modelOverrides = { ...route.modelOverrides, ...(deps.modelOverrides ?? {}) };
   return runRound(config, { ...deps, modelOverrides });
 }

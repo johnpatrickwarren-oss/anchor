@@ -75,15 +75,16 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   const roundId = str(flags, 'round') ?? 'R01';
   const directiveFile = str(flags, 'directive');
 
+  const specPath = str(flags, 'spec'); // optional canonical spec path (threaded to Architect + gates)
   let result: RunResult;
   if (directiveFile || (str(flags, 'task') && !str(flags, 'tier'))) {
     const directive = readDirective(flags)!;
-    result = await runRoundFromDirective(directive, deps, { roundId, runDate: ctx.now(), task: str(flags, 'task'), tierOverride: str(flags, 'tier') as Tier | undefined });
+    result = await runRoundFromDirective(directive, deps, { roundId, runDate: ctx.now(), task: str(flags, 'task'), tierOverride: str(flags, 'tier') as Tier | undefined, specPath });
   } else {
     const tier = (str(flags, 'tier') as Tier) || 'audit';
     const task = str(flags, 'task');
     if (!task) { ctx.stdout('error: provide --task "<text>" (and optionally --tier), or --directive <file>'); return { code: 2 }; }
-    result = await runRound({ roundId, tier, task, runDate: ctx.now() }, deps);
+    result = await runRound({ roundId, tier, task, runDate: ctx.now(), specPath }, deps);
   }
   ctx.stdout(renderRun(result));
   return { code: result.status === 'COMPLETE' ? 0 : 1, result };
