@@ -17,8 +17,8 @@
 import { mkdtempSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runRound } from '../../core/src/index.ts';
-import type { Tier } from '../../core/src/index.ts';
+import { runRound } from '@anchor/core';
+import type { Tier } from '@anchor/core';
 import { AgentSdkAdapter } from '../src/index.ts';
 import type { QueryFn, SdkMessage } from '../src/index.ts';
 

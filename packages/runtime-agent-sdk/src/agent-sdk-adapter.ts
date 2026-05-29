@@ -8,7 +8,7 @@
 // stream (no SDK install, no API key). On the live path it dynamically imports the real
 // `@anthropic-ai/claude-agent-sdk`. See README for the (operator-run) live verification.
 
-import type { RuntimeAdapter, RoleSpec, RoleResult, Role, Usage, RoleStatus, Escalation } from '../../core/src/index.ts';
+import type { RuntimeAdapter, RoleSpec, RoleResult, Role, Usage, RoleStatus, Escalation } from '@anchor/core';
 import type { QueryFn, SdkQueryOptions, SdkMessage, SdkUsage, SdkAssistantMessage, SdkResultMessage } from './sdk-types.ts';
 
 export interface AgentSdkAdapterOptions {
