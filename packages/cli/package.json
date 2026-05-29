@@ -1,0 +1,17 @@
+{
+  "name": "@anchor/cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Operator CLI for the Anchor tool — run/route a disciplined role cycle and manage the memorial.",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=24" },
+  "bin": { "anchor": "./src/cli.ts" },
+  "dependencies": {
+    "@anchor/core": "*",
+    "@anchor/runtime-agent-sdk": "*"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  }
+}
