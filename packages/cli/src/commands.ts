@@ -2,7 +2,7 @@
 // so every command is unit-testable offline; cli.ts wires the real defaults.
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, isAbsolute } from 'node:path';
 import {
   runRound, runRoundFromDirective, resumeRound, runWave, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
   composeGates, grillingGate, antiScopeGate, seedBuiltinDisciplines,
@@ -118,7 +118,12 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   }
 
   const directiveFile = str(flags, 'directive');
-  const specPath = str(flags, 'spec'); // optional canonical spec path (threaded to Architect + gates)
+  // Optional canonical spec path (threaded to Architect + gates). Resolve a relative path
+  // against --cwd so the gates (which read from the engine's process cwd) hit the same file
+  // the Architect wrote in the target repo.
+  const runCwd = str(flags, 'cwd');
+  let specPath = str(flags, 'spec');
+  if (specPath && runCwd && !isAbsolute(specPath)) specPath = join(runCwd, specPath);
   let result: RunResult;
   if (directiveFile || (str(flags, 'task') && !str(flags, 'tier'))) {
     const directive = readDirective(flags)!;
@@ -196,6 +201,14 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
     }
     const byId = Object.fromEntries(worktrees.map((w) => [w.itemId, w]));
     for (const it of items) it.cwd = byId[it.id].dir;
+  }
+
+  // Resolve each item's specPath against ITS OWN cwd so the Architect (writes) and the
+  // gates (read, from the engine's process cwd) hit the same file. A relative specPath
+  // would otherwise be read from the anchor process dir, not the item's worktree — which
+  // silently no-ops gate-based accrual for worktree items.
+  for (const it of items) {
+    if (it.specPath && it.cwd && !isAbsolute(it.specPath)) it.specPath = join(it.cwd, it.specPath);
   }
 
   // Isolation guard (live runs only): concurrent acceptEdits items sharing a working dir

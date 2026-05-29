@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MockRuntimeAdapter, MemoryPersistence, MemorialStore, JsonFilePersistence } from '@anchor/core';
@@ -236,6 +236,25 @@ test('wave shares ONE memorial across items — both items accrue to the same in
   assert.equal(r.code, 0);
   const c = new MemorialStore(new JsonFilePersistence(memPath)).list().find((e) => e.id === 'shared-rule')!.cCount;
   assert.equal(c, 2, 'both items confirmed the rule on the shared instance (not last-writer-wins)');
+});
+
+test('wave resolves a relative item specPath against the item cwd so gates find the spec + accrue', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-wave-spec-'));
+  const memPath = join(dir, 'memorial.json');
+  const itemCwd = join(dir, 'item');
+  mkdirSync(join(itemCwd, 'coordination'), { recursive: true });
+  // A "good" spec (has the grilling + anti-scope sections) pre-written INSIDE the item cwd.
+  writeFileSync(join(itemCwd, 'coordination', 'spec.md'), '## Anti-scope\nNO ranges.\n## Pre-emit grilling\nCRITICAL: 0\nLIKELY-SURFACES: 0\nPRE-EMPTABLE: 0');
+  const ctx: CliContext = {
+    cwd: dir, now: () => '2026-05-29', stdout: () => {},
+    makeAdapter: () => new MockRuntimeAdapter(), // architect doesn't write; the spec pre-exists
+    makePersistence: (p) => new JsonFilePersistence(p!),
+  };
+  // Relative specPath + per-item cwd: only resolves correctly if cmdWave absolutizes it.
+  const plan = planFile({ items: [{ id: 'i1', task: 'demo', tier: 'full', cwd: itemCwd, specPath: 'coordination/spec.md' }] });
+  await cmdWave({ mock: true, plan, memorial: memPath }, ctx);
+  const grill = new MemorialStore(new JsonFilePersistence(memPath)).list().find((e) => e.id === 'pre-emit-grilling')!;
+  assert.equal(grill.cCount, 1, 'gate read the spec via the item-cwd-resolved path and accrued a confirmation');
 });
 
 test('run auto-prunes the memorial (retires a fully-internalized rule); --no-prune skips it', async () => {
