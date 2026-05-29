@@ -54,14 +54,14 @@ test('run --mock self-routes from --task when no --tier given', async () => {
   assert.deepEqual(r.result!.phases.map((p) => p.role), ['implementer']);
 });
 
-test('run without --mock and no API key fails preflight (code 2)', async () => {
+test('run without --mock and no API key does NOT hard-block (SDK uses Claude Code auth); prints a note', async () => {
   const saved = process.env.ANTHROPIC_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
   try {
-    const { ctx, out } = testCtx();
+    const { ctx, out } = testCtx(); // injects a mock adapter, so the run completes
     const r = await cmdRun({ tier: 'audit', task: 'demo' }, ctx);
-    assert.equal(r.code, 2);
-    assert.match(out.join('\n'), /ANTHROPIC_API_KEY/);
+    assert.equal(r.code, 0);
+    assert.match(out.join('\n'), /no ANTHROPIC_API_KEY/);
   } finally {
     if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
   }

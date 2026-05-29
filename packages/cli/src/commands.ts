@@ -58,8 +58,9 @@ export async function cmdRoute(flags: Flags, ctx: CliContext): Promise<{ code: n
 // ── anchor run ──
 export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: number; result?: RunResult }> {
   if (!bool(flags, 'mock') && !process.env.ANTHROPIC_API_KEY) {
-    ctx.stdout('error: ANTHROPIC_API_KEY not set (need a real sk-ant-… key). Set it, run `npm install` at the repo root, or pass --mock.');
-    return { code: 2 };
+    // Not a hard block: the Agent SDK can use Claude Code's existing auth (a logged-in
+    // subscription). Only a bad/placeholder key actually breaks auth.
+    ctx.stdout('note: no ANTHROPIC_API_KEY — using Claude Code\'s existing auth if present (export sk-ant-… to use an API key).');
   }
   const adapter = ctx.makeAdapter(flags);
   const memorialPath = str(flags, 'memorial');

@@ -50,8 +50,11 @@ async function main() {
 
   if (!mock) {
     const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) fail('ANTHROPIC_API_KEY not set (or run with --mock).');
-    if (!/^sk-ant-/.test(key)) console.warn(`⚠ ANTHROPIC_API_KEY="${key.slice(0, 7)}…" doesn't look like an Anthropic key (expected sk-ant-…) — did you paste the placeholder? Continuing anyway.`);
+    if (!key) {
+      console.warn('ℹ no ANTHROPIC_API_KEY set — the SDK will use Claude Code\'s existing auth (e.g. a logged-in Claude subscription). Export sk-ant-… to use an API key instead.');
+    } else if (!/^sk-ant-/.test(key)) {
+      console.warn(`⚠ ANTHROPIC_API_KEY="${key.slice(0, 7)}…" doesn't look like an Anthropic key (expected sk-ant-…). A bad/placeholder key OVERRIDES your Claude Code login — \`unset ANTHROPIC_API_KEY\` to use your subscription, or set a real key. Continuing anyway.`);
+    }
     try { await import('@anthropic-ai/claude-agent-sdk' as string); }
     catch { fail('@anthropic-ai/claude-agent-sdk not resolvable. Run `npm install` at the repo root (it is a dependency of this package), or use --mock.'); }
   }
