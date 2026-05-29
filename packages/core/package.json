@@ -1,0 +1,13 @@
+{
+  "name": "@anchor/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Anchor role engine + runtime-adapter seam — the discipline+memory layer that runs on a commodity agent runtime (Agent SDK / Atomic / Claude Code).",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=24" },
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  }
+}
