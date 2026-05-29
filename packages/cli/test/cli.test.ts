@@ -219,3 +219,39 @@ test('wave (live) refuses items that share a working dir — isolation guard, be
   const r = await cmdWave({ plan }, ctx);
   assert.equal(r.code, 2);
 });
+
+test('wave shares ONE memorial across items — both items accrue to the same instance', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-wave-mem-'));
+  const memPath = join(dir, 'memorial.json');
+  writeFileSync(memPath, JSON.stringify([{ id: 'shared-rule', trigger: 't', rule: 'r', origin: 'o', vCount: 0, cCount: 0, status: 'active' }]));
+  const ctx: CliContext = {
+    cwd: dir, now: () => '2026-05-29', stdout: () => {},
+    makeAdapter: () => new MockRuntimeAdapter({
+      handler: (s) => s.role === 'reviewer' ? { memorialSignals: { confirm: ['shared-rule'], violate: [] } } : {},
+    }),
+    makePersistence: (p) => new JsonFilePersistence(p!),
+  };
+  const plan = planFile({ items: [{ id: 'i1', task: 'a', tier: 'full' }, { id: 'i2', task: 'b', tier: 'full' }] });
+  const r = await cmdWave({ mock: true, plan, memorial: memPath }, ctx);
+  assert.equal(r.code, 0);
+  const c = new MemorialStore(new JsonFilePersistence(memPath)).list().find((e) => e.id === 'shared-rule')!.cCount;
+  assert.equal(c, 2, 'both items confirmed the rule on the shared instance (not last-writer-wins)');
+});
+
+test('run auto-prunes the memorial (retires a fully-internalized rule); --no-prune skips it', async () => {
+  const mk = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'anchor-prune-'));
+    const memPath = join(dir, 'memorial.json');
+    // A rule with 20 confirmations and 0 violations is fully internalized → retireAt.
+    writeFileSync(memPath, JSON.stringify([{ id: 'ripe', trigger: 't', rule: 'r', origin: 'o', vCount: 0, cCount: 20, status: 'active' }]));
+    const ctx: CliContext = { cwd: dir, now: () => '2026-05-29', stdout: () => {}, makeAdapter: () => new MockRuntimeAdapter(), makePersistence: (p) => new JsonFilePersistence(p!) };
+    return { memPath, ctx };
+  };
+  const a = mk();
+  await cmdRun({ mock: true, tier: 'audit', task: 'x', memorial: a.memPath }, a.ctx);
+  assert.equal(new MemorialStore(new JsonFilePersistence(a.memPath)).list().find((e) => e.id === 'ripe')!.status, 'retired');
+
+  const b = mk();
+  await cmdRun({ mock: true, tier: 'audit', task: 'x', memorial: b.memPath, 'no-prune': true }, b.ctx);
+  assert.equal(new MemorialStore(new JsonFilePersistence(b.memPath)).list().find((e) => e.id === 'ripe')!.status, 'active');
+});

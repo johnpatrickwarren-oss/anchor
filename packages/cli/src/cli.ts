@@ -9,7 +9,7 @@ const HELP = `anchor — run Anchor's disciplined role cycle on a commodity runt
 Usage:
   anchor run     [--directive <file> | --task "<text>" [--tier <t>]] [--cwd <dir>] [--round <id>] [--memorial <path>] [--maxTurns <n>] [--mock]
   anchor run     --resume [--state <path> | --round <id>] [--maxTurns <n>]  # continue a paused round (e.g. after a turn-budget pause)
-  anchor wave    --plan <file> [--concurrency <n>]                        # fan out independent cycles in parallel (one cwd/worktree per item)
+  anchor wave    --plan <file> [--repo <dir> [--base <ref>]] [--concurrency <n>] [--memorial <path>]  # fan out independent cycles in parallel (--repo auto-creates a worktree+branch per item)
   anchor route   (--directive <file> | --task "<text>") [--tier <t>]      # dry-run: show classified tier + model routing
   anchor memorial <list|ratios|prune> [--memorial <path>]
 
