@@ -1,0 +1,33 @@
+// @anchor/core — per-role model routing. Ports the dynamic selectors from
+// scripts/impl-model-select.ts (R75) and scripts/mu-model-select.ts (R74) into pure
+// functions that produce model-override entries for the engine. Static roles keep their
+// class defaults (see models.ts); only the Implementer and Memorial-Updater vary by content.
+
+import type { ModelClass, Role, Tier } from '../types.ts';
+
+const HIGH_STAKES = [/\bengine\//, /architectural-decision/i, /architectural-reality/i, /validation-corpus failure/i, /A1 \(new dependency\)/, /A2 \(new architectural pattern\)/, /A4 \(novel data model\)/];
+const MECHANICAL = [/\bmechanical\b/i, /\bcosmetic\b/i, /documentation-only/i, /\bdoc-only\b/i, /\btypo\b/i];
+const MU_MARKERS = [/cross-project promotion/i, /promote to cross-project/i, /Rule 5 threshold/i, /3-instance threshold/i, /\bMU batch\b/i, /REINFORCEMENT consolidation/i, /\bMR-\d+\s+Pass\b/i, /re-accretion guard/i, /Reviewer-2/, /operator[ -]resolution/i];
+
+const hit = (s: string, res: RegExp[]) => res.some((re) => re.test(s));
+
+// Implementer (R75): engine/architectural -> reasoning; mechanical on implementer-only -> cheap; else balanced.
+export function selectImplementerClass(directive: string, tier: Tier): ModelClass {
+  if (hit(directive, HIGH_STAKES)) return 'reasoning';
+  if (tier === 'implementer-only' && hit(directive, MECHANICAL)) return 'cheap';
+  return 'balanced';
+}
+
+// Memorial-Updater (R74): full-tier + cross-round marker -> balanced (Sonnet); else cheap (Haiku).
+export function selectMemorialClass(directive: string, tier: Tier): ModelClass {
+  if (tier === 'full' && hit(directive, MU_MARKERS)) return 'balanced';
+  return 'cheap';
+}
+
+// Class -> the engine's per-role override map. Returns only the roles whose model is
+// content-derived (implementer, memorial); the rest fall through to models.ts class defaults.
+export function selectRoleModelClasses(directive: string, tier: Tier): Partial<Record<Role, ModelClass>> {
+  const out: Partial<Record<Role, ModelClass>> = { implementer: selectImplementerClass(directive, tier) };
+  if (tier === 'full' || tier === 'audit') out.memorial = selectMemorialClass(directive, tier);
+  return out;
+}
