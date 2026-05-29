@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, selectReviewerClass, MockRuntimeAdapter,
+  classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, selectReviewerClass, selectArchitectClass, MockRuntimeAdapter,
 } from '../src/index.ts';
 
 test('classifyTier — priority-ordered heuristic (first match wins)', () => {
@@ -44,6 +44,18 @@ test('selectReviewerClass — cost-aware: load-bearing->reasoning, mechanical/tr
 test('routeRound routes the reviewer model by change-risk', () => {
   assert.equal(routeRound('Add a sortable column to the users table').modelOverrides.reviewer, 'claude-opus-4-8'); // substantive -> opus
   assert.equal(routeRound('documentation-only touch-up', { tierOverride: 'audit' }).modelOverrides.reviewer, 'claude-sonnet-4-6'); // mechanical -> sonnet
+});
+
+test('selectArchitectClass — load-bearing->reasoning, routine full-tier->balanced', () => {
+  assert.equal(selectArchitectClass('Modify engine/detectors/fcp.ts', 'full'), 'reasoning');
+  assert.equal(selectArchitectClass('A2 (new architectural pattern): switch middleware', 'full'), 'reasoning');
+  assert.equal(selectArchitectClass('Add a sortable column to the users table', 'full'), 'balanced'); // routine
+});
+
+test('routeRound routes the architect model by change-risk (full tier only)', () => {
+  assert.equal(routeRound('Modify engine/detectors/fcp.ts — architectural-decision').modelOverrides.architect, 'claude-opus-4-8'); // load-bearing
+  assert.equal(routeRound('Add a sortable column to the users table').modelOverrides.architect, 'claude-sonnet-4-6'); // routine full -> sonnet
+  assert.equal(routeRound('add a feature', { tierOverride: 'audit' }).modelOverrides.architect, undefined); // no architect off full tier
 });
 
 test('routeRound resolves classes to concrete model ids; tierOverride wins', () => {
