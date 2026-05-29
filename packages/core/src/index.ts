@@ -19,3 +19,6 @@ export type { Finding, Severity, GateResult, CitationResolver, Mutation, Mutatio
 // Phase 4 — memorial service (the cross-project learning loop).
 export { MemorialStore, MemoryPersistence, JsonFilePersistence } from './memorial/index.ts';
 export type { MemorialEntry, MemorialStatus, MemorialPersistence, RatioRow, MemorialStoreOptions, PruneThresholds } from './memorial/index.ts';
+// Routing — derive tier + per-role models from a directive (self-routing).
+export { classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, selectRoleModelClasses } from './routing/index.ts';
+export type { TierClassification, RouteResult, RouteOptions, DirectiveRunMeta } from './routing/index.ts';
