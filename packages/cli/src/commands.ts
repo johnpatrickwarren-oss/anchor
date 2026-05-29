@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import {
   runRound, runRoundFromDirective, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
-  composeGates, grillingGate, antiScopeGate,
+  composeGates, grillingGate, antiScopeGate, seedBuiltinDisciplines,
 } from '@anchor/core';
 import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult } from '@anchor/core';
 import { AgentSdkAdapter } from '@anchor/runtime-agent-sdk';
@@ -67,10 +67,16 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   const adapter = ctx.makeAdapter(flags);
   const memorialPath = str(flags, 'memorial');
   const memorial = memorialPath !== undefined ? new MemorialStore(ctx.makePersistence(memorialPath)) : undefined;
+  if (memorial) seedBuiltinDisciplines(memorial); // ensure the discipline entries exist to accrue against
   // Structural gates (grilling + anti-scope) are ON by default as ADVISORY warnings;
-  // --strict promotes them to blocking; --no-gates disables them.
+  // --strict promotes them to blocking; --no-gates disables them. With a memorial, the gates
+  // accrue V/C against the built-in disciplines (closing the learning loop), and the memorial's
+  // applicable() rules are injected into role prompts by the engine.
   const strict = bool(flags, 'strict');
-  const gates = bool(flags, 'no-gates') ? undefined : composeGates(grillingGate(undefined, strict), antiScopeGate({ blocking: strict }));
+  const gates = bool(flags, 'no-gates') ? undefined : composeGates(
+    grillingGate(undefined, strict, memorial ? { sink: memorial, memorialId: 'pre-emit-grilling' } : undefined),
+    antiScopeGate({ blocking: strict, accrual: memorial ? { sink: memorial, memorialId: 'anti-scope' } : undefined }),
+  );
   const deps = { adapter, memorial, gates };
   const roundId = str(flags, 'round') ?? 'R01';
   const directiveFile = str(flags, 'directive');
@@ -100,6 +106,14 @@ export async function cmdMemorial(sub: string, flags: Flags, ctx: CliContext): P
     return { code: 0, data };
   }
   if (sub === 'prune') { const data = store.prune(ctx.now()); ctx.stdout(`stabilized: ${data.stabilized.join(', ') || '—'}\nretired: ${data.retired.join(', ') || '—'}`); return { code: 0, data }; }
-  ctx.stdout(`error: unknown memorial subcommand "${sub}" (use list|ratios|prune)`);
+  if (sub === 'add') {
+    const id = str(flags, 'id'); const rule = str(flags, 'rule');
+    if (!id || !rule) { ctx.stdout('error: memorial add requires --id and --rule (optional --trigger, --origin)'); return { code: 2 }; }
+    try { store.add({ id, rule, trigger: str(flags, 'trigger') ?? '', origin: str(flags, 'origin') ?? 'operator' }); }
+    catch (e) { ctx.stdout(`error: ${(e as Error).message}`); return { code: 2 }; }
+    ctx.stdout(`added memorial "${id}"`);
+    return { code: 0, data: store.list() };
+  }
+  ctx.stdout(`error: unknown memorial subcommand "${sub}" (use list|ratios|prune|add)`);
   return { code: 2 };
 }

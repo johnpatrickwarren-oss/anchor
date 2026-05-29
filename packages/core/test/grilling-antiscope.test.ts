@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   checkGrillingEmitted, checkAntiScope, checkAntiScopeViolation,
   grillingGate, antiScopeGate, runRound, MockRuntimeAdapter,
+  MemorialStore, MemoryPersistence, seedBuiltinDisciplines,
 } from '../src/index.ts';
 import type { RoundConfig, RoleResult, RoleSpec } from '../src/index.ts';
 
@@ -82,6 +83,28 @@ test('gates read config.specPath (canonical) — not just the role artifacts', a
   assert.equal(r.status, 'BLOCKED'); // canonical spec has no grilling -> blocking gate halts
   assert.equal(r.pausedAt, 'architect');
 });
+
+test('a memorial-aware gate accrues V/C against its discipline (closing the loop)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-accrual-'));
+  const store = new MemorialStore(new MemoryPersistence());
+  seedBuiltinDisciplines(store);
+  const run = (specBody: string) => runRound(
+    { roundId: 'R01', tier: 'full', task: 'demo', runDate: '2026-05-29', specPath: writeSpec(dir, specBody) },
+    { adapter: new MockRuntimeAdapter(), gates: grillingGate(undefined, false, { sink: store, memorialId: 'pre-emit-grilling' }) },
+  );
+  await run('# Spec\nno self-review buckets here'); // missing grilling -> violation
+  await run('## Pre-emit grilling\nCRITICAL: 0\nLIKELY-SURFACES: 0\nPRE-EMPTABLE: 0'); // has grilling -> confirmation
+  const e = store.list().find((x) => x.id === 'pre-emit-grilling')!;
+  assert.equal(e.vCount, 1);
+  assert.equal(e.cCount, 1);
+});
+
+function writeSpec(dir: string, body: string): string {
+  const p = join(dir, `Q-${Math.abs(hash(body))}-SPEC.md`);
+  writeFileSync(p, body);
+  return p;
+}
+function hash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 
 test('default role prompts instruct grilling + anti-scope (architect) and anti-self-confirming (implementer/reviewer)', async () => {
   const prompts: Record<string, string> = {};

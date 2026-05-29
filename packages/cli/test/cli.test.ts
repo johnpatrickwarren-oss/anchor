@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MockRuntimeAdapter, MemoryPersistence } from '@anchor/core';
+import { MockRuntimeAdapter, MemoryPersistence, MemorialStore, JsonFilePersistence } from '@anchor/core';
 import type { MemorialEntry } from '@anchor/core';
 import { parseArgs } from '../src/args.ts';
 import { cmdRoute, cmdRun, cmdMemorial } from '../src/commands.ts';
@@ -112,6 +112,38 @@ test('run: structural gates default-ON as advisory; --strict promotes them to bl
   const off = await cmdRun({ tier: 'full', task: 'demo', 'no-gates': true }, ctx);
   assert.equal(off.result!.status, 'COMPLETE');
   assert.equal(off.result!.warnings.length, 0);
+});
+
+test('run --memorial seeds disciplines and accrues V/C (violation on missing, confirmation on present)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-mem-run-'));
+  const memPath = join(dir, 'memorial.json');
+  const badSpec = join(dir, 'q-spec-bad.md'); writeFileSync(badSpec, '# Spec\nno self-review buckets, no excluded-items list');
+  const goodSpec = join(dir, 'q-spec-good.md'); writeFileSync(goodSpec, '## Anti-scope\nNO ranges.\n## Pre-emit grilling\nCRITICAL: 0\nLIKELY-SURFACES: 0\nPRE-EMPTABLE: 0');
+  const out: string[] = [];
+  const ctx: CliContext = {
+    cwd: dir, now: () => '2026-05-29', stdout: (s) => out.push(s),
+    makeAdapter: () => new MockRuntimeAdapter(),
+    makePersistence: (p) => new JsonFilePersistence(p!), // real file so the run persists + we can re-read
+  };
+  await cmdRun({ tier: 'full', task: 'demo', memorial: memPath, spec: badSpec }, ctx);   // missing grilling+anti-scope
+  await cmdRun({ tier: 'full', task: 'demo', memorial: memPath, spec: goodSpec }, ctx);  // both present
+
+  const store = new MemorialStore(new JsonFilePersistence(memPath));
+  const grill = store.list().find((e) => e.id === 'pre-emit-grilling')!;
+  const ascope = store.list().find((e) => e.id === 'anti-scope')!;
+  assert.equal(grill.vCount, 1, 'grilling violation on the bad spec');
+  assert.equal(grill.cCount, 1, 'grilling confirmation on the good spec');
+  assert.equal(ascope.vCount, 1);
+  assert.equal(ascope.cCount, 1);
+});
+
+test('memorial add authors a new entry', async () => {
+  const { ctx } = testCtx();
+  const r = await cmdMemorial('add', { id: 'my-rule', rule: 'always grep the field name', trigger: 'schema change' }, ctx);
+  assert.equal(r.code, 0);
+  assert.ok((r.data as { id: string }[]).some((e) => e.id === 'my-rule'));
+  // missing --rule errors
+  assert.equal((await cmdMemorial('add', { id: 'x' }, ctx)).code, 2);
 });
 
 test('memorial unknown subcommand errors', async () => {
