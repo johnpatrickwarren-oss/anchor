@@ -49,9 +49,26 @@ const CAVEAT =
   'phases[].usage is the per-role raw token breakdown (input/cache_creation/cache_read/output). ' +
   'No bare total cost is published; reconstruct cost from these + a pricing table (POC AC-7).';
 
+// Role obligations — the disciplines baked into each role's instruction so the agent
+// applies them (grilling gate / anti-scope gate / anti-self-confirming gate then verify).
+const ROLE_OBLIGATIONS: Record<Role, string> = {
+  architect:
+    'Draft the spec. Include an explicit "## Anti-scope" section naming what is NOT in scope. ' +
+    'Cite every inherited primitive in an "Existing architectural surface" table (file + pinned SHA + line range + verbatim snippet). ' +
+    'Before emitting, run a pre-emit grilling pass and inline its CRITICAL / LIKELY-SURFACES / PRE-EMPTABLE buckets.',
+  implementer:
+    "Implement exactly to the spec (cold-read; don't seek the Architect's reasoning). Every acceptance criterion gets a test, " +
+    'and no test may be self-confirming (it must FAIL if the production line it checks is broken). HALT with a DIAGNOSTIC if the spec contradicts reality.',
+  reviewer:
+    'Cold-eye spec-vs-implementation audit. Verify each acceptance criterion against the actual code. Apply the anti-self-confirming-test check. ' +
+    'Tier findings by severity (CRITICAL / MAJOR / MINOR / NIT).',
+  memorial: 'Append one discipline-accretion entry recording what this round confirms or violates.',
+  coordinator: 'Produce or close the wave plan / wave-gate; do not implement.',
+};
+
 function defaultPrompt(role: Role, config: RoundConfig, handoff: Record<string, unknown>): string {
   const priorRoles = Object.keys(handoff).join(', ') || 'none';
-  return `ROLE: ${role}\nROUND: ${config.roundId} (tier ${config.tier})\nTASK: ${config.task}\nPRIOR HANDOFFS FROM: ${priorRoles}`;
+  return `ROLE: ${role}\nROUND: ${config.roundId} (tier ${config.tier})\nTASK: ${config.task}\nPRIOR HANDOFFS FROM: ${priorRoles}\n\nYour obligations:\n${ROLE_OBLIGATIONS[role]}`;
 }
 
 // Lean context-by-reference: a role gets the prior roles' artifact PATHS, not their text
