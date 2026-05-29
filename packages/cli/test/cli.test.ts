@@ -43,6 +43,14 @@ test('route with no input errors (code 2)', async () => {
   assert.equal((await cmdRoute({}, ctx)).code, 2);
 });
 
+test('run --json emits the RunResult (with per-role usage) as parseable JSON', async () => {
+  const { ctx, out } = testCtx();
+  await cmdRun({ mock: true, tier: 'audit', task: 'demo', json: true }, ctx);
+  const parsed = JSON.parse(out.join('\n').trim());
+  assert.equal(parsed.status, 'COMPLETE');
+  assert.ok(parsed.phases[0].usage && typeof parsed.phases[0].usage.output === 'number');
+});
+
 test('run --mock --tier audit runs the 3-role cycle', async () => {
   const { ctx } = testCtx();
   const r = await cmdRun({ mock: true, tier: 'audit', task: 'demo' }, ctx);

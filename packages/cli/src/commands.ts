@@ -111,7 +111,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
     try { paused = JSON.parse(readFileSync(statePath, 'utf8')) as RunResult; }
     catch { ctx.stdout(`error: no paused round at ${statePath} — pass --state <path> or the matching --round`); return { code: 2 }; }
     const result = await resumeRound(paused, { answer: str(flags, 'answer') ?? 'operator resumed (turn budget raised)' }, deps);
-    ctx.stdout(renderRun(result));
+    ctx.stdout(bool(flags, 'json') ? JSON.stringify(result, null, 2) : renderRun(result));
     persistIfPaused(result, statePath, ctx);
     maybePrune(memorial, flags, ctx);
     return { code: result.status === 'COMPLETE' ? 0 : 1, result };
@@ -134,7 +134,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
     if (!task) { ctx.stdout('error: provide --task "<text>" (and optionally --tier), or --directive <file>'); return { code: 2 }; }
     result = await runRound({ roundId, tier, task, runDate: ctx.now(), specPath }, deps);
   }
-  ctx.stdout(renderRun(result));
+  ctx.stdout(bool(flags, 'json') ? JSON.stringify(result, null, 2) : renderRun(result));
   persistIfPaused(result, statePath, ctx);
   maybePrune(memorial, flags, ctx);
   return { code: result.status === 'COMPLETE' ? 0 : 1, result };
@@ -247,8 +247,8 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
     runDate: ctx.now(),
     concurrency: Number(str(flags, 'concurrency')) || plan.concurrency || undefined,
   });
-  ctx.stdout(renderWave(wave));
-  if (worktrees.length) {
+  ctx.stdout(bool(flags, 'json') ? JSON.stringify(wave, null, 2) : renderWave(wave));
+  if (worktrees.length && !bool(flags, 'json')) {
     ctx.stdout('worktrees (review / commit / PR each):\n' + worktrees.map((w) => `  ${w.itemId.padEnd(18)} ${w.branch}  ${w.dir}`).join('\n'));
   }
   maybePrune(memorial, flags, ctx);
