@@ -64,7 +64,7 @@ const ROLE_OBLIGATIONS: Record<Role, string> = {
     'and no test may be self-confirming (it must FAIL if the production line it checks is broken). HALT with a DIAGNOSTIC if the spec contradicts reality.',
   reviewer:
     'Cold-eye spec-vs-implementation audit. Verify each acceptance criterion against the actual code. Apply the anti-self-confirming-test check. ' +
-    'Tier findings by severity (CRITICAL / MAJOR / MINOR / NIT). ' +
+    'BE TERSE — output ONLY: one line per acceptance criterion (`AC-n: pass|fail @ file:line`), then the material findings tiered by severity (CRITICAL / MAJOR / MINOR / NIT), then the status + memorial lines. Do NOT restate code, paste test output, or narrate your steps; cite file:line instead of reproducing. A clean review is a few lines, not paragraphs. ' +
     'For each REINFORCEMENT discipline you were given (tagged [id]), judge whether the implementation upheld or broke it and report it back by id via the ANCHOR-MEMORIAL-CONFIRM / ANCHOR-MEMORIAL-VIOLATE contract — this is how the memorial learns from review.',
   memorial: 'Append one discipline-accretion entry recording what this round confirms or violates.',
   coordinator: 'Produce or close the wave plan / wave-gate; do not implement.',
