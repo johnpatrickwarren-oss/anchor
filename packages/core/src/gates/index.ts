@@ -23,6 +23,10 @@ export { checkAntiScope, checkAntiScopeViolation } from './anti-scope.ts';
 
 type EngineGate = NonNullable<EngineDeps['gates']>;
 
+// A gate can accrue its discipline's V/C to the memorial (closing the learning loop).
+// MemorialStore satisfies this structurally.
+export interface MemorialAccrual { recordConfirmation(id: string, date?: string): void; recordViolation(id: string, date?: string): void; }
+
 // Shared spec reader: prefer the canonical config.specPath (deterministic — set by the
 // engine, which also instructs the Architect to write there); fall back to guessing the
 // first .md artifact whose path mentions "spec".
@@ -59,25 +63,37 @@ export function citationGate(resolve: CitationResolver, specTextFor?: (r: RoleRe
 // Engine-hook factory: the Architect's spec must carry a pre-emit grilling pass (structural).
 // blocking=true (default) halts the run on failure; blocking=false surfaces findings as
 // non-blocking warnings (the recommended default in `anchor run`, since this gate is heuristic).
-export function grillingGate(specTextFor?: (r: RoleResult) => string | null, blocking = true): EngineGate {
+export function grillingGate(specTextFor?: (r: RoleResult) => string | null, blocking = true, accrual?: { sink: MemorialAccrual; memorialId: string }): EngineGate {
   return (result: RoleResult, config: RoundConfig) => {
     if (result.role !== 'architect') return { pass: true, findings: [] };
     const text = specTextFor ? specTextFor(result) : readSpec(result, config);
     if (text === null) return { pass: true, findings: [] };
-    const o = toGateOutcome(checkGrillingEmitted(text));
-    return blocking ? o : { pass: true, findings: o.findings };
+    const res = checkGrillingEmitted(text);
+    if (accrual) {
+      if (res.pass) accrual.sink.recordConfirmation(accrual.memorialId, config.runDate);
+      else accrual.sink.recordViolation(accrual.memorialId, config.runDate);
+    }
+    const o = toGateOutcome(res);
+    return blocking ? o : { pass: true, findings: o.findings }; // advisory keeps findings, accrues either way
   };
 }
 
 // Engine-hook factory: the Architect's spec must carry an anti-scope section (structural),
 // and (optionally) no written file may fall inside a declared anti-scope pattern.
 // blocking=false surfaces findings as warnings instead of halting.
-export function antiScopeGate(opts: { specTextFor?: (r: RoleResult) => string | null; patternsFor?: (r: RoleResult) => string[]; blocking?: boolean } = {}): EngineGate {
+export function antiScopeGate(opts: { specTextFor?: (r: RoleResult) => string | null; patternsFor?: (r: RoleResult) => string[]; blocking?: boolean; accrual?: { sink: MemorialAccrual; memorialId: string } } = {}): EngineGate {
   return (result: RoleResult, config: RoundConfig) => {
     const findings: string[] = [];
     if (result.role === 'architect') {
       const text = opts.specTextFor ? opts.specTextFor(result) : readSpec(result, config);
-      if (text !== null) { const o = toGateOutcome(checkAntiScope(text)); if (o.findings) findings.push(...o.findings); }
+      if (text !== null) {
+        const res = checkAntiScope(text);
+        if (opts.accrual) {
+          if (res.pass) opts.accrual.sink.recordConfirmation(opts.accrual.memorialId, config.runDate);
+          else opts.accrual.sink.recordViolation(opts.accrual.memorialId, config.runDate);
+        }
+        const o = toGateOutcome(res); if (o.findings) findings.push(...o.findings);
+      }
     }
     if (opts.patternsFor) {
       const o = toGateOutcome(checkAntiScopeViolation(opts.patternsFor(result), result.artifacts));

@@ -27,7 +27,9 @@ anchor memorial prune             # stabilize/retire well-internalized entries
 |---|---|
 | `anchor run` | Run a round. `--directive <file>` or `--task "<text>"` (self-routes tier+models if no `--tier`); `--tier`, `--cwd`, `--round`, `--spec <path>` (canonical spec path the Architect writes to and gates read), `--memorial <path>`, `--mock`, `--strict`, `--no-gates`. |
 | `anchor route` | Dry-run: print the classified tier (+ confidence/matched rule) and per-role model overrides. Offline. |
-| `anchor memorial <list\|ratios\|prune>` | Inspect/maintain the memorial store (`--memorial <path>`, default in-memory). |
+| `anchor memorial <list\|ratios\|prune\|add>` | Inspect/maintain the memorial store (`--memorial <path>`). `add --id <id> --rule "<rule>" [--trigger] [--origin]` authors an entry. |
+
+**The learning loop:** pass `--memorial <path>` to `anchor run` and the structural gates accrue **V/C** against the built-in disciplines (`pre-emit-grilling`, `anti-scope`, auto-seeded) — a deficient spec records a violation, a compliant one a confirmation. The memorial's active rules are injected into role prompts on the next run, so the disciplines reinforce over time. Inspect with `anchor memorial ratios`.
 
 **Discipline gates:** the structural gates (pre-emit grilling + anti-scope) are **ON by default as advisory warnings** — a non-compliant Architect spec is surfaced in the run report but does not halt the run (they're heuristic checks). `--strict` promotes them to blocking (`BLOCKED`); `--no-gates` disables them. The fully-mechanical gates (citation, anti-self-confirming) need config and are wired in programmatically, not via the CLI.
 
