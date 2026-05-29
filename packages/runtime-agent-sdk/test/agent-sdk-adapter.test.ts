@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, parseMemorialSignals, buildQueryOptions, isMaxTurns, isTransient,
+  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, parseMemorialSignals, buildQueryOptions, isMaxTurns, isTransient, resolveMaxTurns, DEFAULT_MAX_TURNS_BY_ROLE,
 } from '../src/index.ts';
 import type { SdkMessage } from '../src/index.ts';
 
@@ -150,6 +150,21 @@ test('spawnRole surfaces memorialSignals parsed from the role output', async () 
   ];
   const r = await new AgentSdkAdapter({ queryFn: () => fakeQuery(stream) }).spawnRole({ ...spec, role: 'reviewer' } as never);
   assert.deepEqual(r.memorialSignals, { confirm: ['additive-replay-clean'], violate: ['no-rng'] });
+});
+
+test('per-role turn caps: implementer gets the most, memorial the least (defaults)', () => {
+  assert.equal(resolveMaxTurns('implementer', {}), DEFAULT_MAX_TURNS_BY_ROLE.implementer);
+  assert.equal(resolveMaxTurns('memorial', {}), DEFAULT_MAX_TURNS_BY_ROLE.memorial);
+  assert.ok(DEFAULT_MAX_TURNS_BY_ROLE.implementer > DEFAULT_MAX_TURNS_BY_ROLE.memorial);
+  // buildQueryOptions wires the resolved cap through.
+  assert.equal(buildQueryOptions({ ...spec, role: 'implementer' } as never, {}).maxTurns, DEFAULT_MAX_TURNS_BY_ROLE.implementer);
+  assert.equal(buildQueryOptions({ ...spec, role: 'memorial' } as never, {}).maxTurns, DEFAULT_MAX_TURNS_BY_ROLE.memorial);
+});
+
+test('per-role turn caps: a flat maxTurns wins over per-role; an explicit per-role override wins over the default', () => {
+  assert.equal(resolveMaxTurns('memorial', { maxTurns: 200 }), 200);          // flat override wins
+  assert.equal(resolveMaxTurns('implementer', { maxTurnsByRole: { implementer: 5 } }), 5); // per-role override
+  assert.equal(resolveMaxTurns('reviewer', { maxTurnsByRole: { implementer: 5 } }), DEFAULT_MAX_TURNS_BY_ROLE.reviewer); // others fall back
 });
 
 test('isMaxTurns recognizes the result subtype and thrown messages, not unrelated errors', () => {

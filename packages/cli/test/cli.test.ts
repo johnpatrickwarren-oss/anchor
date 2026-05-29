@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { MockRuntimeAdapter, MemoryPersistence, MemorialStore, JsonFilePersistence } from '@anchor/core';
 import type { MemorialEntry } from '@anchor/core';
 import { parseArgs } from '../src/args.ts';
-import { cmdRoute, cmdRun, cmdMemorial } from '../src/commands.ts';
+import { cmdRoute, cmdRun, cmdMemorial, cmdWave } from '../src/commands.ts';
 import type { CliContext } from '../src/commands.ts';
 
 function testCtx(seed: MemorialEntry[] = []) {
@@ -183,5 +183,39 @@ test('run pauses on escalation, persists state, and --resume completes the round
 test('--resume with no saved state errors (code 2)', async () => {
   const { ctx } = testCtx();
   const r = await cmdRun({ mock: true, resume: true, state: join(tmpdir(), 'anchor-no-such-state-xyz.json') }, ctx);
+  assert.equal(r.code, 2);
+});
+
+function planFile(plan: unknown): string {
+  const p = join(mkdtempSync(join(tmpdir(), 'anchor-wave-')), 'plan.json');
+  writeFileSync(p, JSON.stringify(plan));
+  return p;
+}
+
+test('wave fans out independent items and reports COMPLETE in input order (mock)', async () => {
+  const { ctx } = testCtx();
+  const plan = planFile({ items: [
+    { id: 'feat-a', task: 'do a', tier: 'solo' },
+    { id: 'feat-b', task: 'do b', tier: 'solo' },
+    { id: 'feat-c', task: 'do c', tier: 'solo' },
+  ] });
+  const r = await cmdWave({ mock: true, plan, concurrency: '2' }, ctx);
+  assert.equal(r.code, 0);
+  assert.equal(r.wave!.status, 'COMPLETE');
+  assert.deepEqual(r.wave!.rounds.map((x) => x.itemId), ['feat-a', 'feat-b', 'feat-c']);
+});
+
+test('wave requires --plan, and rejects an empty plan', async () => {
+  const { ctx } = testCtx();
+  assert.equal((await cmdWave({ mock: true }, ctx)).code, 2);            // no --plan
+  assert.equal((await cmdWave({ mock: true, plan: planFile({ items: [] }) }, ctx)).code, 2); // empty
+});
+
+test('wave (live) refuses items that share a working dir — isolation guard, before any SDK call', async () => {
+  const { ctx } = testCtx();
+  // Two items, neither with its own cwd → would collide under acceptEdits. mock omitted so
+  // the guard applies; it returns at the guard, so no adapter/SDK is ever invoked.
+  const plan = planFile({ items: [{ id: 'a', task: 'x' }, { id: 'b', task: 'y' }] });
+  const r = await cmdWave({ plan }, ctx);
   assert.equal(r.code, 2);
 });
