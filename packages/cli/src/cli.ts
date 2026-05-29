@@ -14,6 +14,8 @@ Usage:
   anchor memorial <list|ratios|prune> [--memorial <path>]
 
 Tiers: full | audit | solo | implementer-only | coordinator-only
+Memorial: --memorial <path> injects + accrues disciplines; auto-pruned each run (--no-prune to skip).
+  Injection is self-limiting: the most task-relevant rules inject (+ any live ones), capped at --max-rules (default 12; 0 = all).
 --mock runs offline (no model/tokens). Real runs need ANTHROPIC_API_KEY + @anthropic-ai/claude-agent-sdk.`;
 
 export async function main(argv: string[]): Promise<number> {

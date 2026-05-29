@@ -22,7 +22,7 @@ export {
 } from './gates/index.ts';
 export type { Finding, Severity, GateResult, CitationResolver, Mutation, MutationRunner, MemorialAccrual } from './gates/index.ts';
 // Phase 4 — memorial service (the cross-project learning loop).
-export { MemorialStore, MemoryPersistence, JsonFilePersistence, BUILTIN_DISCIPLINES, seedBuiltinDisciplines } from './memorial/index.ts';
+export { MemorialStore, MemoryPersistence, JsonFilePersistence, BUILTIN_DISCIPLINES, seedBuiltinDisciplines, keywordRelevance } from './memorial/index.ts';
 export type { MemorialEntry, MemorialStatus, MemorialPersistence, RatioRow, MemorialStoreOptions, PruneThresholds } from './memorial/index.ts';
 // Routing — derive tier + per-role models from a directive (self-routing).
 export { classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, selectRoleModelClasses } from './routing/index.ts';

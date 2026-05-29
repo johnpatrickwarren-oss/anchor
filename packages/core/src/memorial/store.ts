@@ -23,8 +23,30 @@ const DEFAULT_THRESHOLDS: PruneThresholds = { stabilizeAt: 10, retireAt: 20 };
 
 export interface MemorialStoreOptions {
   thresholds?: PruneThresholds;
-  // Optional: decide which entries are relevant to a round (default: any non-retired entry).
+  // Optional hard filter: decide which entries are even eligible for a round (default: any
+  // non-retired entry).
   triggerMatcher?: (entry: MemorialEntry, config: RoundConfig) => boolean;
+  // Optional soft cap on how many rules inject per round — the self-limiting lever. When
+  // set, applicable() always injects "live" rules (violations > confirmations) and then the
+  // top-`injectCap` most RELEVANT of the rest. Unset = inject all eligible (legacy).
+  injectCap?: number;
+  // Relevance scorer used when injectCap is set (default: keyword overlap with the task).
+  relevance?: (entry: MemorialEntry, config: RoundConfig) => number;
+}
+
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'to', 'of', 'and', 'or', 'in', 'on', 'for', 'with', 'add', 'new',
+  'any', 'that', 'this', 'use', 'via', 'change', 'changes', 'into', 'from', 'its',
+]);
+
+/** Default relevance: count of significant task tokens that appear in the rule's
+ *  trigger+text. Higher = more relevant to this round. Pure + deterministic. */
+export function keywordRelevance(entry: MemorialEntry, config: RoundConfig): number {
+  const hay = `${entry.trigger} ${entry.rule}`.toLowerCase();
+  const tokens = new Set((config.task ?? '').toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) ?? []);
+  let score = 0;
+  for (const t of tokens) if (!STOPWORDS.has(t) && hay.includes(t)) score++;
+  return score;
 }
 
 export class MemoryPersistence implements MemorialPersistence {
@@ -39,12 +61,16 @@ export class MemorialStore implements MemorialPort {
   private persistence: MemorialPersistence;
   private thresholds: PruneThresholds;
   private triggerMatcher: (entry: MemorialEntry, config: RoundConfig) => boolean;
+  private injectCap?: number;
+  private relevance: (entry: MemorialEntry, config: RoundConfig) => number;
 
   constructor(persistence: MemorialPersistence, opts: MemorialStoreOptions = {}) {
     this.persistence = persistence;
     this.entries = persistence.load();
     this.thresholds = opts.thresholds ?? DEFAULT_THRESHOLDS;
     this.triggerMatcher = opts.triggerMatcher ?? (() => true);
+    this.injectCap = opts.injectCap;
+    this.relevance = opts.relevance ?? keywordRelevance;
   }
 
   private flush(): void { this.persistence.save(this.entries); }
@@ -84,12 +110,28 @@ export class MemorialStore implements MemorialPort {
 
   // ── MemorialPort (engine seam) ──
   async applicable(config: RoundConfig): Promise<string[]> {
-    // Inject each rule PREFIXED with its id (`[id] rule`) so a role (the Reviewer)
-    // can cite the id back in an ANCHOR-MEMORIAL-CONFIRM/VIOLATE signal — closing the
-    // accrual loop for that specific discipline.
-    return this.entries
-      .filter((e) => e.status !== 'retired' && this.triggerMatcher(e, config))
-      .map((e) => `[${e.id}] ${e.rule}`);
+    // Eligible = non-retired and passing the hard trigger filter.
+    const eligible = this.entries.filter((e) => e.status !== 'retired' && this.triggerMatcher(e, config));
+    const selected = this.injectCap === undefined ? eligible : this.selectRelevant(eligible, config, this.injectCap);
+    // Inject each rule PREFIXED with its id (`[id] rule`) so a role (the Reviewer) can cite
+    // the id back in an ANCHOR-MEMORIAL-CONFIRM/VIOLATE signal — closing the accrual loop.
+    return selected.map((e) => `[${e.id}] ${e.rule}`);
+  }
+
+  // Self-limiting selection: always keep "live" rules (violations outpace confirmations —
+  // an active recurring problem must never be dropped to a cap), then the top-`cap` most
+  // relevant of the rest. Output preserves original entry order for stable injection.
+  private selectRelevant(eligible: MemorialEntry[], config: RoundConfig, cap: number): MemorialEntry[] {
+    const live = eligible.filter((e) => e.vCount > e.cCount);
+    const rest = eligible.filter((e) => !(e.vCount > e.cCount));
+    const ranked = [...rest]
+      .sort((a, b) => {
+        const d = this.relevance(b, config) - this.relevance(a, config);
+        return d !== 0 ? d : (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); // deterministic tiebreak
+      })
+      .slice(0, Math.max(0, cap));
+    const keep = new Set([...live, ...ranked].map((e) => e.id));
+    return eligible.filter((e) => keep.has(e.id));
   }
 
   async record(kind: 'violation' | 'confirmation', context: Record<string, unknown>): Promise<void> {
