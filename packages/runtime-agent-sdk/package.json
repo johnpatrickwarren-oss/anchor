@@ -5,10 +5,15 @@
   "type": "module",
   "description": "RuntimeAdapter for @anchor/core backed by the Claude Agent SDK (query()).",
   "license": "Apache-2.0",
-  "engines": { "node": ">=24" },
-  "exports": { ".": "./src/index.ts" },
-  "peerDependencies": { "@anthropic-ai/claude-agent-sdk": ">=0.1.0" },
-  "peerDependenciesMeta": { "@anthropic-ai/claude-agent-sdk": { "optional": true } },
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.156"
+  },
   "scripts": {
     "test": "node --test test/*.test.ts",
     "smoke": "node smoke/smoke.ts",

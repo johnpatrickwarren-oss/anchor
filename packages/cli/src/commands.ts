@@ -58,7 +58,7 @@ export async function cmdRoute(flags: Flags, ctx: CliContext): Promise<{ code: n
 // ── anchor run ──
 export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: number; result?: RunResult }> {
   if (!bool(flags, 'mock') && !process.env.ANTHROPIC_API_KEY) {
-    ctx.stdout('error: ANTHROPIC_API_KEY not set. Set it (and `npm i @anthropic-ai/claude-agent-sdk`) or pass --mock.');
+    ctx.stdout('error: ANTHROPIC_API_KEY not set (need a real sk-ant-… key). Set it, run `npm install` at the repo root, or pass --mock.');
     return { code: 2 };
   }
   const adapter = ctx.makeAdapter(flags);
