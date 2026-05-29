@@ -10,6 +10,8 @@ import {
 import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult, WaveItem, WaveResult } from '@anchor/core';
 import { AgentSdkAdapter } from '@anchor/runtime-agent-sdk';
 import { str, bool } from './args.ts';
+import { createWorktrees, slug } from './worktree.ts';
+import type { WorktreeSpec } from './worktree.ts';
 
 export interface CliContext {
   cwd: string;
@@ -101,6 +103,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
     const result = await resumeRound(paused, { answer: str(flags, 'answer') ?? 'operator resumed (turn budget raised)' }, deps);
     ctx.stdout(renderRun(result));
     persistIfPaused(result, statePath, ctx);
+    maybePrune(memorial, flags, ctx);
     return { code: result.status === 'COMPLETE' ? 0 : 1, result };
   }
 
@@ -118,6 +121,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   }
   ctx.stdout(renderRun(result));
   persistIfPaused(result, statePath, ctx);
+  maybePrune(memorial, flags, ctx);
   return { code: result.status === 'COMPLETE' ? 0 : 1, result };
 }
 
@@ -154,6 +158,7 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
 
   const raw = plan.items ?? [];
   if (raw.length === 0) { ctx.stdout('error: plan has no items'); return { code: 2 }; }
+  const waveId = plan.waveId ?? str(flags, 'wave-id') ?? 'W01';
 
   const items: WaveItem[] = raw.map((it) => ({
     id: String(it.id),
@@ -165,32 +170,77 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
     cwd: typeof it.cwd === 'string' ? it.cwd : undefined,
   }));
 
+  // Auto-worktree: with --repo, create one git worktree + branch per item off --base
+  // (default HEAD) and route each item there — no hand-assigned cwds, and each item's work
+  // lands on its own branch for review/PR.
+  let worktrees: WorktreeSpec[] = [];
+  const repo = str(flags, 'repo');
+  if (repo) {
+    const base = str(flags, 'base') ?? 'HEAD';
+    const rootDir = str(flags, 'worktree-dir') ?? join(repo, '.anchor', 'worktrees', slug(waveId));
+    try {
+      worktrees = createWorktrees({ repo, base, waveId, ids: items.map((i) => i.id), rootDir });
+    } catch (e) {
+      ctx.stdout(`error: could not create worktrees in ${repo}: ${(e as Error).message}`);
+      return { code: 2 };
+    }
+    const byId = Object.fromEntries(worktrees.map((w) => [w.itemId, w]));
+    for (const it of items) it.cwd = byId[it.id].dir;
+  }
+
   // Isolation guard (live runs only): concurrent acceptEdits items sharing a working dir
-  // would stomp each other. Refuse unless every item has its own cwd. --mock can't edit
-  // files, so it's exempt.
+  // would stomp each other. Refuse unless every item has its own cwd (auto-satisfied by
+  // --repo worktrees). --mock can't edit files, so it's exempt.
   if (!bool(flags, 'mock')) {
     const cwds = items.map((i) => i.cwd ?? '(unset)');
     const dupes = [...new Set(cwds.filter((c, i) => cwds.indexOf(c) !== i))];
     if (dupes.length) {
-      ctx.stdout(`error: wave items share a working dir (${dupes.join(', ')}); give each parallel item its own "cwd" (e.g. a git worktree) so concurrent edits don't collide`);
+      ctx.stdout(`error: wave items share a working dir (${dupes.join(', ')}); pass --repo to auto-create a worktree per item, or give each its own "cwd"`);
       return { code: 2 };
     }
   }
 
+  const memorialPath = str(flags, 'memorial');
+  const memorial = memorialPath ? new MemorialStore(ctx.makePersistence(memorialPath)) : undefined;
+  if (memorial) seedBuiltinDisciplines(memorial);
   const strict = bool(flags, 'strict');
   const noGates = bool(flags, 'no-gates');
+  // ONE shared memorial instance across items: Node is single-threaded and each accrual is
+  // a synchronous body, so concurrent record() calls on a single instance are safe (counts
+  // are commutative, no interleaved corruption). Separate instances on one file would
+  // last-writer-win and lose accruals.
   const depsFor = (item: WaveItem) => ({
     adapter: ctx.makeAdapter({ ...flags, cwd: item.cwd ?? str(flags, 'cwd') }),
-    gates: noGates ? undefined : composeGates(grillingGate(undefined, strict), antiScopeGate({ blocking: strict })),
+    gates: noGates ? undefined : composeGates(
+      grillingGate(undefined, strict, memorial ? { sink: memorial, memorialId: 'pre-emit-grilling' } : undefined),
+      antiScopeGate({ blocking: strict, accrual: memorial ? { sink: memorial, memorialId: 'anti-scope' } : undefined }),
+    ),
+    memorial,
+    gateOwnedMemorialIds: memorial && !noGates ? ['pre-emit-grilling', 'anti-scope'] : undefined,
   });
 
   const wave = await runWave(items, depsFor, {
-    waveId: plan.waveId ?? str(flags, 'wave-id') ?? 'W01',
+    waveId,
     runDate: ctx.now(),
     concurrency: Number(str(flags, 'concurrency')) || plan.concurrency || undefined,
   });
   ctx.stdout(renderWave(wave));
+  if (worktrees.length) {
+    ctx.stdout('worktrees (review / commit / PR each):\n' + worktrees.map((w) => `  ${w.itemId.padEnd(18)} ${w.branch}  ${w.dir}`).join('\n'));
+  }
+  maybePrune(memorial, flags, ctx);
   return { code: wave.status === 'COMPLETE' ? 0 : 1, wave };
+}
+
+// Auto-prune after a run/wave so the memorial stays bounded: a fully-internalized rule
+// (≥ retireAt confirmations, 0 violations) retires and stops injecting; well-confirmed
+// rules stabilize. Skipped with --no-prune. Surfaces what changed.
+function maybePrune(memorial: MemorialStore | undefined, flags: Flags, ctx: CliContext): void {
+  if (!memorial || bool(flags, 'no-prune')) return;
+  const { stabilized, retired } = memorial.prune(ctx.now());
+  if (stabilized.length || retired.length) {
+    ctx.stdout(`memorial pruned — stabilized: ${stabilized.join(', ') || '—'}; retired: ${retired.join(', ') || '—'}`);
+  }
 }
 
 // ── anchor memorial <list|ratios|prune> ──
