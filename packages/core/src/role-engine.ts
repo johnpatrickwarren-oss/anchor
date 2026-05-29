@@ -43,6 +43,9 @@ export interface EngineDeps {
   gates?: (result: RoleResult, config: RoundConfig) => Promise<GateOutcome> | GateOutcome;
   // Phase-4 seam.
   memorial?: MemorialPort;
+  // Disciplines a structural gate already accrues (e.g. the built-in grilling/anti-scope
+  // gates). Reviewer-signal accrual SKIPS these to avoid gate+signal double-counting.
+  gateOwnedMemorialIds?: string[];
 }
 
 const CAVEAT =
@@ -61,7 +64,8 @@ const ROLE_OBLIGATIONS: Record<Role, string> = {
     'and no test may be self-confirming (it must FAIL if the production line it checks is broken). HALT with a DIAGNOSTIC if the spec contradicts reality.',
   reviewer:
     'Cold-eye spec-vs-implementation audit. Verify each acceptance criterion against the actual code. Apply the anti-self-confirming-test check. ' +
-    'Tier findings by severity (CRITICAL / MAJOR / MINOR / NIT).',
+    'Tier findings by severity (CRITICAL / MAJOR / MINOR / NIT). ' +
+    'For each REINFORCEMENT discipline you were given (tagged [id]), judge whether the implementation upheld or broke it and report it back by id via the ANCHOR-MEMORIAL-CONFIRM / ANCHOR-MEMORIAL-VIOLATE contract — this is how the memorial learns from review.',
   memorial: 'Append one discipline-accretion entry recording what this round confirms or violates.',
   coordinator: 'Produce or close the wave plan / wave-gate; do not implement.',
 };
@@ -136,6 +140,23 @@ async function runFrom(
         return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
       }
       if (deps.memorial) await deps.memorial.record('confirmation', { role });
+    }
+
+    // Reviewer-driven accrual (the learning loop for ANY discipline, not just the built-in
+    // gates). Only the REVIEWER's signals accrue — it is the cold-eye judge, so an
+    // architect/implementer self-report is advisory, not authoritative (prevents one round
+    // double/triple-counting a discipline). Disciplines a gate already owns this round are
+    // skipped (no gate+signal double), and a violation wins over a confirmation. record()
+    // tolerates unknown ids, so a hallucinated id is ignored rather than crashing the run.
+    if (role === 'reviewer' && deps.memorial && result.memorialSignals) {
+      const gateOwned = new Set(deps.gateOwnedMemorialIds ?? []);
+      const violated = result.memorialSignals.violate.filter((id) => !gateOwned.has(id));
+      const violatedSet = new Set(violated);
+      for (const id of violated) await deps.memorial.record('violation', { memorialId: id, date: config.runDate });
+      for (const id of result.memorialSignals.confirm) {
+        if (gateOwned.has(id) || violatedSet.has(id)) continue;
+        await deps.memorial.record('confirmation', { memorialId: id, date: config.runDate });
+      }
     }
 
     handoff[role] = result.handoff;

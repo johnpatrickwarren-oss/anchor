@@ -37,6 +37,7 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
       // Deterministic, non-zero usage so cost-aggregation paths are exercised in tests.
       usage: partial.usage ?? { input: 10, cache_creation: 100, cache_read: 200, output: 50 },
       escalation: partial.escalation,
+      memorialSignals: partial.memorialSignals,
     };
   }
 }

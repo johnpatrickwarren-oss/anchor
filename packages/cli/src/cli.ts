@@ -7,7 +7,8 @@ import { defaultContext, cmdRoute, cmdRun, cmdMemorial } from './commands.ts';
 const HELP = `anchor — run Anchor's disciplined role cycle on a commodity runtime
 
 Usage:
-  anchor run     [--directive <file> | --task "<text>" [--tier <t>]] [--cwd <dir>] [--round <id>] [--memorial <path>] [--mock]
+  anchor run     [--directive <file> | --task "<text>" [--tier <t>]] [--cwd <dir>] [--round <id>] [--memorial <path>] [--maxTurns <n>] [--mock]
+  anchor run     --resume [--state <path> | --round <id>] [--maxTurns <n>]  # continue a paused round (e.g. after a turn-budget pause)
   anchor route   (--directive <file> | --task "<text>") [--tier <t>]      # dry-run: show classified tier + model routing
   anchor memorial <list|ratios|prune> [--memorial <path>]
 

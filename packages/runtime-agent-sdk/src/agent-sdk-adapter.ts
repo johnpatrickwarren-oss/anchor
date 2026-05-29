@@ -117,9 +117,40 @@ const STATUS_CONTRACT =
   'ANCHOR-STATUS: READY   (use ESCALATE if an operator decision is required, or BLOCKED if you must halt)\n' +
   'If ESCALATE, add a second line — ANCHOR-ESCALATE: <one-line bounded question>.';
 
+// Memorial accrual contract: if the role was given REINFORCEMENTS (each tagged `[id]`),
+// it reports — by id — which disciplines the round upheld vs broke. The engine accrues
+// these to the memorial, so a discipline's value/cost ratio reflects what review found.
+const MEMORIAL_CONTRACT =
+  '\n\nIf you were given REINFORCEMENTS (each prefixed with a [discipline-id]), also end with:\n' +
+  'ANCHOR-MEMORIAL-CONFIRM: <id>, <id>   (disciplines the round upheld)\n' +
+  'ANCHOR-MEMORIAL-VIOLATE: <id>, <id>   (disciplines the round broke — omit the line if none)';
+
+// Parse the role's ANCHOR-MEMORIAL-CONFIRM / -VIOLATE lines into id lists. Tolerant:
+// missing lines → empty arrays; ids are comma/space-split and trimmed.
+const MEMORIAL_CONFIRM_RE = /^ANCHOR-MEMORIAL-CONFIRM:\s*(.+)$/gim;
+const MEMORIAL_VIOLATE_RE = /^ANCHOR-MEMORIAL-VIOLATE:\s*(.+)$/gim;
+
+function idsFrom(text: string, re: RegExp): string[] {
+  const ids: string[] = [];
+  for (const m of text.matchAll(re)) {
+    for (const raw of m[1].split(/[,\s]+/)) {
+      const id = raw.trim().replace(/^\[|\]$/g, ''); // tolerate `[id]` or `id`
+      if (id && !ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
+export function parseMemorialSignals(finalText: string): { confirm: string[]; violate: string[] } {
+  return {
+    confirm: idsFrom(finalText, MEMORIAL_CONFIRM_RE),
+    violate: idsFrom(finalText, MEMORIAL_VIOLATE_RE),
+  };
+}
+
 export function buildPrompt(spec: RoleSpec): string {
   const refs = spec.contextRefs.length ? `\n\nContext files (read as needed): ${spec.contextRefs.join(', ')}` : '';
-  return `${spec.prompt}${refs}${STATUS_CONTRACT}`;
+  return `${spec.prompt}${refs}${STATUS_CONTRACT}${MEMORIAL_CONTRACT}`;
 }
 
 // ── The adapter ──────────────────────────────────────────────────────────────
@@ -194,7 +225,15 @@ export class AgentSdkAdapter implements RuntimeAdapter {
       ? { status: 'BLOCKED' as RoleStatus }
       : parseStatusContract(finalText, spec.role);
 
-    return { role: spec.role, status: det.status, artifacts, handoff, usage, escalation: det.escalation };
+    return {
+      role: spec.role,
+      status: det.status,
+      artifacts,
+      handoff,
+      usage,
+      escalation: det.escalation,
+      memorialSignals: parseMemorialSignals(finalText),
+    };
   }
 }
 

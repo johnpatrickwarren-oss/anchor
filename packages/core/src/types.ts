@@ -47,6 +47,10 @@ export interface RoleResult {
   handoff: Record<string, unknown>; // structured data the next role needs
   usage: Usage;
   escalation?: Escalation; // present iff status === 'ESCALATE'
+  // Memorial accrual signalled by the role (typically the Reviewer): the disciplines
+  // (by id) the round upheld vs broke. The engine feeds these to memorial.record(),
+  // closing the learning loop for ANY discipline — not just the built-in gates.
+  memorialSignals?: { confirm: string[]; violate: string[] };
 }
 
 export interface Resolution {
