@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, buildQueryOptions, isMaxTurns, isTransient,
+  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, parseMemorialSignals, buildQueryOptions, isMaxTurns, isTransient,
 } from '../src/index.ts';
 import type { SdkMessage } from '../src/index.ts';
 
@@ -126,6 +126,30 @@ test('isTransient flags retryable server/network errors, not terminal ones', () 
   assert.equal(isTransient(new Error('Invalid API key')), false);
   assert.equal(isTransient(new Error('Reached maximum number of turns (25)')), false);
   assert.equal(isTransient(undefined), false);
+});
+
+test('parseMemorialSignals reads CONFIRM/VIOLATE id lists; tolerant of brackets, spacing, absence', () => {
+  const text = [
+    'Review complete. CRITICAL: none.',
+    'ANCHOR-STATUS: READY',
+    'ANCHOR-MEMORIAL-CONFIRM: additive-replay-clean, [no-self-confirming-demo]',
+    'ANCHOR-MEMORIAL-VIOLATE: determinism-no-rng',
+  ].join('\n');
+  assert.deepEqual(parseMemorialSignals(text), {
+    confirm: ['additive-replay-clean', 'no-self-confirming-demo'], // `[id]` brackets stripped
+    violate: ['determinism-no-rng'],
+  });
+  // No memorial lines → empty arrays (not undefined), so the engine path is a clean no-op.
+  assert.deepEqual(parseMemorialSignals('ANCHOR-STATUS: READY'), { confirm: [], violate: [] });
+});
+
+test('spawnRole surfaces memorialSignals parsed from the role output', async () => {
+  const stream: SdkMessage[] = [
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'ANCHOR-STATUS: READY\nANCHOR-MEMORIAL-CONFIRM: additive-replay-clean\nANCHOR-MEMORIAL-VIOLATE: no-rng' }] } },
+    { type: 'result', subtype: 'success', usage: { input_tokens: 1, output_tokens: 2 } },
+  ];
+  const r = await new AgentSdkAdapter({ queryFn: () => fakeQuery(stream) }).spawnRole({ ...spec, role: 'reviewer' } as never);
+  assert.deepEqual(r.memorialSignals, { confirm: ['additive-replay-clean'], violate: ['no-rng'] });
 });
 
 test('isMaxTurns recognizes the result subtype and thrown messages, not unrelated errors', () => {

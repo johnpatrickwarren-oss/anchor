@@ -30,7 +30,46 @@ test('applicable returns non-retired rules; retired entries stop injecting', asy
   s.add(seedEntry({ id: 'retired-one', rule: 'old rule' }));
   s.retire('retired-one', 'failure mode eliminated by a lint rule', '2026-05-29');
   const rules = await s.applicable(cfg);
-  assert.deepEqual(rules, ['verify firing-ID attribution at source before building a hypothesis tree']);
+  assert.deepEqual(rules, ['[firing-attribution] verify firing-ID attribution at source before building a hypothesis tree']);
+});
+
+test('record() tolerates an unknown/hallucinated id (no throw, no accrual)', async () => {
+  const s = new MemorialStore(new MemoryPersistence());
+  s.add(seedEntry());
+  await s.record('confirmation', { memorialId: 'not-a-real-discipline', date: '2026-05-29' });
+  await s.record('violation', { memorialId: 'also-fake' });
+  assert.equal(s.list()[0].cCount, 0); // the real entry is untouched
+  assert.equal(s.list().length, 1);    // no phantom entry created
+});
+
+test('engine integration: reviewer memorialSignals accrue V/C by id (the learning loop)', async () => {
+  const store = new MemorialStore(new MemoryPersistence());
+  store.add(seedEntry({ id: 'additive-replay-clean', rule: 'changes must be additive' }));
+  store.add(seedEntry({ id: 'no-rng', rule: 'no RNG in scoring' }));
+  const adapter = new MockRuntimeAdapter({
+    handler: (spec: RoleSpec) =>
+      spec.role === 'reviewer'
+        ? { memorialSignals: { confirm: ['additive-replay-clean'], violate: ['no-rng'] } }
+        : {},
+  });
+  const r = await runRound({ ...cfg, tier: 'full' }, { adapter, memorial: store });
+  assert.equal(r.status, 'COMPLETE');
+  const byId = Object.fromEntries(store.ratios().map((x) => [x.id, x]));
+  assert.equal(byId['additive-replay-clean'].c, 1); // upheld → confirmation
+  assert.equal(byId['additive-replay-clean'].v, 0);
+  assert.equal(byId['no-rng'].v, 1);                // broken → violation
+});
+
+test('engine integration: a hallucinated signalled id does not crash the run', async () => {
+  const store = new MemorialStore(new MemoryPersistence());
+  store.add(seedEntry());
+  const adapter = new MockRuntimeAdapter({
+    handler: (spec: RoleSpec) =>
+      spec.role === 'reviewer' ? { memorialSignals: { confirm: ['ghost-discipline'], violate: [] } } : {},
+  });
+  const r = await runRound({ ...cfg, tier: 'full' }, { adapter, memorial: store });
+  assert.equal(r.status, 'COMPLETE'); // tolerated, not crashed
+  assert.equal(store.list()[0].cCount, 0);
 });
 
 test('triggerMatcher narrows applicability to the round', async () => {

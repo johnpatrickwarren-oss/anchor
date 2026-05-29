@@ -84,15 +84,22 @@ export class MemorialStore implements MemorialPort {
 
   // ── MemorialPort (engine seam) ──
   async applicable(config: RoundConfig): Promise<string[]> {
+    // Inject each rule PREFIXED with its id (`[id] rule`) so a role (the Reviewer)
+    // can cite the id back in an ANCHOR-MEMORIAL-CONFIRM/VIOLATE signal — closing the
+    // accrual loop for that specific discipline.
     return this.entries
       .filter((e) => e.status !== 'retired' && this.triggerMatcher(e, config))
-      .map((e) => e.rule);
+      .map((e) => `[${e.id}] ${e.rule}`);
   }
 
   async record(kind: 'violation' | 'confirmation', context: Record<string, unknown>): Promise<void> {
     const id = typeof context.memorialId === 'string' ? context.memorialId : undefined;
     const date = typeof context.date === 'string' ? context.date : undefined;
     if (!id) return; // no attribution -> nothing to accrete (callers pass context.memorialId)
+    // Tolerate unknown/hallucinated ids: this path consumes model-emitted signals, so an
+    // id that doesn't exist is ignored (no throw) rather than crashing the run. The strict
+    // authoring methods (recordConfirmation/recordViolation) still throw on unknown ids.
+    if (!this.entries.some((e) => e.id === id)) return;
     if (kind === 'confirmation') this.recordConfirmation(id, date);
     else this.recordViolation(id, date);
   }

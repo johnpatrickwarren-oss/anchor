@@ -61,7 +61,8 @@ const ROLE_OBLIGATIONS: Record<Role, string> = {
     'and no test may be self-confirming (it must FAIL if the production line it checks is broken). HALT with a DIAGNOSTIC if the spec contradicts reality.',
   reviewer:
     'Cold-eye spec-vs-implementation audit. Verify each acceptance criterion against the actual code. Apply the anti-self-confirming-test check. ' +
-    'Tier findings by severity (CRITICAL / MAJOR / MINOR / NIT).',
+    'Tier findings by severity (CRITICAL / MAJOR / MINOR / NIT). ' +
+    'For each REINFORCEMENT discipline you were given (tagged [id]), judge whether the implementation upheld or broke it and report it back by id via the ANCHOR-MEMORIAL-CONFIRM / ANCHOR-MEMORIAL-VIOLATE contract — this is how the memorial learns from review.',
   memorial: 'Append one discipline-accretion entry recording what this round confirms or violates.',
   coordinator: 'Produce or close the wave plan / wave-gate; do not implement.',
 };
@@ -136,6 +137,14 @@ async function runFrom(
         return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
       }
       if (deps.memorial) await deps.memorial.record('confirmation', { role });
+    }
+
+    // Reviewer-driven accrual (the learning loop for ANY discipline, not just the built-in
+    // gates): feed the role's by-id memorial signals to the memorial. record() tolerates
+    // unknown ids, so a hallucinated id is ignored rather than crashing the run.
+    if (deps.memorial && result.memorialSignals) {
+      for (const id of result.memorialSignals.confirm) await deps.memorial.record('confirmation', { memorialId: id, date: config.runDate });
+      for (const id of result.memorialSignals.violate) await deps.memorial.record('violation', { memorialId: id, date: config.runDate });
     }
 
     handoff[role] = result.handoff;
