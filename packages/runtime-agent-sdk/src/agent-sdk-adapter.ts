@@ -15,7 +15,13 @@ export interface AgentSdkAdapterOptions {
   queryFn?: QueryFn; // inject for tests; default = real SDK query (dynamic import)
   cwd?: string;
   permissionMode?: SdkQueryOptions['permissionMode']; // default 'acceptEdits' (autonomous role work)
+  // Flat turn cap across ALL roles. When set it wins (e.g. operator passes --maxTurns to
+  // resume with a bigger budget). When unset, the per-role budget applies.
   maxTurns?: number;
+  // Per-role turn cap. The implementer is turn-hungry (TDD write→test→fix loop), the
+  // reviewer re-reads + re-runs, while the architect/memorial are lighter — so they get
+  // different budgets. Falls back to DEFAULT_MAX_TURNS_BY_ROLE.
+  maxTurnsByRole?: Partial<Record<Role, number>>;
   systemPromptFor?: (role: Role) => string;
   // Transient-error resilience: retry the SDK call on retryable failures (529 Overloaded,
   // socket close, ECONNRESET, …) with exponential backoff. Default 3 retries (4 attempts).
@@ -101,6 +107,23 @@ export function lastAssistantText(messages: SdkMessage[]): string {
   return '';
 }
 
+// Default per-role turn budgets. The implementer does the write→test→fix loop (each test
+// run is a turn) over many files, so it gets the most; the reviewer re-reads + re-runs; the
+// architect writes one spec; the memorial appends one entry.
+export const DEFAULT_MAX_TURNS_BY_ROLE: Record<Role, number> = {
+  architect: 40,
+  implementer: 80,
+  reviewer: 50,
+  memorial: 20,
+  coordinator: 30,
+};
+
+// Resolve the turn cap for a role: an explicit flat `maxTurns` wins (operator override),
+// else the per-role override, else the per-role default.
+export function resolveMaxTurns(role: Role, opts: AgentSdkAdapterOptions): number {
+  return opts.maxTurns ?? opts.maxTurnsByRole?.[role] ?? DEFAULT_MAX_TURNS_BY_ROLE[role] ?? 80;
+}
+
 export function buildQueryOptions(spec: RoleSpec, opts: AgentSdkAdapterOptions): SdkQueryOptions {
   return {
     systemPrompt: opts.systemPromptFor?.(spec.role) ?? `You are the ${spec.role.toUpperCase()} in an Anchor methodology cycle. Stay strictly within your role.`,
@@ -108,7 +131,7 @@ export function buildQueryOptions(spec: RoleSpec, opts: AgentSdkAdapterOptions):
     allowedTools: spec.tools,
     cwd: opts.cwd,
     permissionMode: opts.permissionMode ?? 'acceptEdits',
-    maxTurns: opts.maxTurns,
+    maxTurns: resolveMaxTurns(spec.role, opts),
   };
 }
 

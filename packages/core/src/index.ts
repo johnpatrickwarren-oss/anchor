@@ -10,6 +10,9 @@ export { MockRuntimeAdapter } from './runtime-adapter.ts';
 export type { RuntimeAdapter, MockScenario } from './runtime-adapter.ts';
 export { runRound, resumeRound } from './role-engine.ts';
 export type { EngineDeps, GateOutcome, MemorialPort } from './role-engine.ts';
+// Fan-out: run independent cycles concurrently (throughput).
+export { runWave } from './wave.ts';
+export type { WaveItem, WaveRoundResult, WaveResult, WaveConfig } from './wave.ts';
 // Phase 3 — discipline gates.
 export {
   composeGates, citationGate, antiSelfConfirmingGate, grillingGate, antiScopeGate,

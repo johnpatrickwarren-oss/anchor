@@ -4,10 +4,10 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import {
-  runRound, runRoundFromDirective, resumeRound, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
+  runRound, runRoundFromDirective, resumeRound, runWave, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
   composeGates, grillingGate, antiScopeGate, seedBuiltinDisciplines,
 } from '@anchor/core';
-import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult } from '@anchor/core';
+import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult, WaveItem, WaveResult } from '@anchor/core';
 import { AgentSdkAdapter } from '@anchor/runtime-agent-sdk';
 import { str, bool } from './args.ts';
 
@@ -27,7 +27,9 @@ export function defaultContext(): CliContext {
     stdout: (s) => console.log(s),
     makeAdapter: (flags) => bool(flags, 'mock')
       ? new MockRuntimeAdapter()
-      : new AgentSdkAdapter({ cwd: str(flags, 'cwd') ?? process.cwd(), maxTurns: Number(str(flags, 'maxTurns')) || 80, permissionMode: 'acceptEdits' }),
+      // --maxTurns sets a FLAT cap across roles (handy for resume); without it, the
+      // adapter's per-role budgets apply (implementer gets the most; memorial the least).
+      : new AgentSdkAdapter({ cwd: str(flags, 'cwd') ?? process.cwd(), maxTurns: str(flags, 'maxTurns') ? Number(str(flags, 'maxTurns')) : undefined, permissionMode: 'acceptEdits' }),
     makePersistence: (path) => path ? new JsonFilePersistence(path) : new MemoryPersistence(),
   };
 }
@@ -129,6 +131,66 @@ function persistIfPaused(result: RunResult, statePath: string, ctx: CliContext):
   } catch (e) {
     ctx.stdout(`warning: could not save paused state to ${statePath}: ${(e as Error).message}`);
   }
+}
+
+// ── anchor wave ── fan out independent cycles concurrently.
+export function renderWave(w: WaveResult): string {
+  const rows = w.rounds.map((r) => {
+    const roles = r.result.phases.map((p) => `${p.role}:${p.status}`).join(' ') || '(no phases)';
+    return `  ${r.itemId.padEnd(18)} [${r.result.tier}] ${r.result.status.padEnd(9)} ${roles}`;
+  }).join('\n');
+  return `wave ${w.waveId} -> ${w.status}  (${w.rounds.length} item(s))\n${rows}`;
+}
+
+export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: number; wave?: WaveResult }> {
+  const planPath = str(flags, 'plan');
+  if (!planPath) {
+    ctx.stdout('error: anchor wave requires --plan <file> (JSON: { items: [{ id, task|directive|directiveFile, tier?, cwd? }] })');
+    return { code: 2 };
+  }
+  let plan: { waveId?: string; concurrency?: number; items?: Array<Record<string, unknown>> };
+  try { plan = JSON.parse(readFileSync(planPath, 'utf8')); }
+  catch (e) { ctx.stdout(`error: cannot read plan ${planPath}: ${(e as Error).message}`); return { code: 2 }; }
+
+  const raw = plan.items ?? [];
+  if (raw.length === 0) { ctx.stdout('error: plan has no items'); return { code: 2 }; }
+
+  const items: WaveItem[] = raw.map((it) => ({
+    id: String(it.id),
+    directive: typeof it.directiveFile === 'string' ? readFileSync(it.directiveFile, 'utf8')
+      : typeof it.directive === 'string' ? it.directive : undefined,
+    task: typeof it.task === 'string' ? it.task : undefined,
+    tier: it.tier as Tier | undefined,
+    specPath: typeof it.specPath === 'string' ? it.specPath : undefined,
+    cwd: typeof it.cwd === 'string' ? it.cwd : undefined,
+  }));
+
+  // Isolation guard (live runs only): concurrent acceptEdits items sharing a working dir
+  // would stomp each other. Refuse unless every item has its own cwd. --mock can't edit
+  // files, so it's exempt.
+  if (!bool(flags, 'mock')) {
+    const cwds = items.map((i) => i.cwd ?? '(unset)');
+    const dupes = [...new Set(cwds.filter((c, i) => cwds.indexOf(c) !== i))];
+    if (dupes.length) {
+      ctx.stdout(`error: wave items share a working dir (${dupes.join(', ')}); give each parallel item its own "cwd" (e.g. a git worktree) so concurrent edits don't collide`);
+      return { code: 2 };
+    }
+  }
+
+  const strict = bool(flags, 'strict');
+  const noGates = bool(flags, 'no-gates');
+  const depsFor = (item: WaveItem) => ({
+    adapter: ctx.makeAdapter({ ...flags, cwd: item.cwd ?? str(flags, 'cwd') }),
+    gates: noGates ? undefined : composeGates(grillingGate(undefined, strict), antiScopeGate({ blocking: strict })),
+  });
+
+  const wave = await runWave(items, depsFor, {
+    waveId: plan.waveId ?? str(flags, 'wave-id') ?? 'W01',
+    runDate: ctx.now(),
+    concurrency: Number(str(flags, 'concurrency')) || plan.concurrency || undefined,
+  });
+  ctx.stdout(renderWave(wave));
+  return { code: wave.status === 'COMPLETE' ? 0 : 1, wave };
 }
 
 // ── anchor memorial <list|ratios|prune> ──
