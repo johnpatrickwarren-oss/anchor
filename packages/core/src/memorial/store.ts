@@ -37,15 +37,41 @@ export interface MemorialStoreOptions {
 const STOPWORDS = new Set([
   'the', 'a', 'an', 'to', 'of', 'and', 'or', 'in', 'on', 'for', 'with', 'add', 'new',
   'any', 'that', 'this', 'use', 'via', 'change', 'changes', 'into', 'from', 'its',
+  'must', 'should', 'only', 'when', 'each', 'not', 'are', 'make', 'made', 'also',
+  'per', 'such', 'than', 'then', 'over', 'how', 'why', 'all', 'one', 'two',
 ]);
 
-/** Default relevance: count of significant task tokens that appear in the rule's
- *  trigger+text. Higher = more relevant to this round. Pure + deterministic. */
+// Word tokens (≥3 chars, not stopwords), lowercased + deduped.
+function tokenize(s: string): string[] {
+  return [...new Set((s.toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) ?? []).filter((t) => !STOPWORDS.has(t)))];
+}
+
+// Two tokens are "related" if identical, or they share a ≥4-char prefix. The prefix rule
+// folds morphological variants (scoring↔score, test↔tests↔testing, config↔configuration)
+// while rejecting short coincidences (cli↔client, api↔application) — and it avoids a
+// stemmer's over-stemming. Exact-match keeps short domain tokens (ssl, p99) matchable.
+function related(a: string, b: string): boolean {
+  if (a === b) return true;
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return i >= 4;
+}
+
+/** Default relevance of a rule to the round. Each task token that matches the rule's
+ *  TRIGGER (the author's explicit "when this applies") scores 2; matching only the rule
+ *  body scores 1. Matching is morphology-aware + word-boundary (see `related`), so it
+ *  catches variant word forms without the false positives of bare substring search.
+ *  Pure + deterministic. */
 export function keywordRelevance(entry: MemorialEntry, config: RoundConfig): number {
-  const hay = `${entry.trigger} ${entry.rule}`.toLowerCase();
-  const tokens = new Set((config.task ?? '').toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) ?? []);
+  const trigger = tokenize(entry.trigger);
+  const body = tokenize(entry.rule);
+  const task = tokenize(config.task ?? '');
   let score = 0;
-  for (const t of tokens) if (!STOPWORDS.has(t) && hay.includes(t)) score++;
+  for (const t of task) {
+    if (trigger.some((r) => related(t, r))) score += 2;
+    else if (body.some((r) => related(t, r))) score += 1;
+  }
   return score;
 }
 
