@@ -1,11 +1,11 @@
 // scripts/tier-router.ts — Tier-routing classifier (R73)
+// MIRROR: these rules also live in @anchor/core/routing (classifyTier). Kept SELF-CONTAINED here (not importing the package) because new-project.sh copies this script into standalone projects with no workspace access. Keep the two in sync.
 // Outputs JSON tier recommendation given a directive content file.
 // Usage: node scripts/tier-router.js [--directive <path>] [--mode heuristic|hybrid|haiku] [--confidence-threshold 0.70]
 
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { classifyTier } from '@anchor/core'; // canonical tier rules — this script is the bash-pipeline CLI wrapper over @anchor/core/routing
 
 interface RouterResult {
   round: string;
@@ -83,16 +83,102 @@ function loadDirective(path: string): { content: string; round: string } {
 }
 
 function heuristic(content: string, round: string): RouterResult {
-  // Delegate the rule set to @anchor/core (single source of truth; retires the duplicate copy
-  // flagged in PR #50). The Haiku tiebreaker below stays here — it needs the Claude CLI, which
-  // is out of scope for the pure core classifier.
-  const c = classifyTier(content);
+  // RULE 1: coordinator-only (confidence 0.90, first-match wins)
+  const coordinatorMatches: string[] = [];
+  if (/coordinator wave plan/i.test(content)) coordinatorMatches.push('Coordinator wave plan');
+  if (/WAVE-GATE-\d+ close/.test(content)) coordinatorMatches.push('WAVE-GATE close');
+  if (/CLUSTER-HANDOFF/.test(content)) coordinatorMatches.push('CLUSTER-HANDOFF');
+  if (/operator-decision backlog/i.test(content)) coordinatorMatches.push('operator-decision backlog');
+  if (/^## § R\d+ Round-scope directive \(Coordinator —/m.test(content)) coordinatorMatches.push('Coordinator — heading');
+  if (/--coordinator(?:\s|$)/.test(content)) coordinatorMatches.push('--coordinator flag');
+  if (coordinatorMatches.length > 0) {
+    return {
+      round,
+      tier: 'coordinator-only',
+      confidence: 0.90,
+      rationale: `coordinator anchor: ${coordinatorMatches.slice(0, 2).join(', ')}`,
+      decision_path: ['heuristic_rule_1_coordinator'],
+      router_version: ROUTER_VERSION,
+      mode: 'heuristic',
+    };
+  }
+
+  // RULE 2: full (confidence 0.85)
+  const fullMatches: string[] = [];
+  if (/\bESCALATE\b/.test(content)) fullMatches.push('ESCALATE');
+  if (/HALT \+ DIAGNOSTIC/.test(content)) fullMatches.push('HALT+DIAGNOSTIC');
+  if (/architectural-decision|architectural-reality/i.test(content)) fullMatches.push('architectural-decision');
+  if (/R61-class/.test(content)) fullMatches.push('R61-class');
+  if (/validation-corpus failure/i.test(content)) fullMatches.push('validation-corpus failure');
+  if (/(^|[\s/])engine\//m.test(content)) fullMatches.push('engine/ path');
+  if (/--tier full\b/.test(content)) fullMatches.push('--tier full');
+  if (/\bA1 \(new dependency\)|\bA2 \(new architectural pattern\)|\bA4 \(novel data model\)/.test(content)) fullMatches.push('A-factor');
+  if (fullMatches.length > 0) {
+    return {
+      round,
+      tier: 'full',
+      confidence: 0.85,
+      rationale: `full anchor: ${fullMatches.slice(0, 2).join(', ')}`,
+      decision_path: ['heuristic_rule_2_full_signal'],
+      router_version: ROUTER_VERSION,
+      mode: 'heuristic',
+    };
+  }
+
+  // RULE 3: implementer-only (confidence 0.80)
+  // Count ALLOWED paths heuristically in a window after "ALLOWED".
+  const allowedSection = content.match(/(?:^|\n)ALLOWED(?: modifications)?:?[\s\S]{0,3000}/i);
+  let allowedPaths = 0;
+  let hasRiskySurface = false;
+  if (allowedSection) {
+    const pathLine = /[\s`-](\S+\.(?:ts|js|sh|json|md))(?:`|\s|$)/g;
+    let m: RegExpExecArray | null;
+    while ((m = pathLine.exec(allowedSection[0])) !== null) {
+      allowedPaths++;
+      const p = m[1];
+      if (/^engine\/|^tools\/|^scripts\/|^test\//.test(p) || /package\.json|tsconfig.*\.json|run-pipeline\.sh/.test(p)) {
+        hasRiskySurface = true;
+      }
+    }
+  }
+  const mechanicalKeyword = /\bmechanical\b|\bcosmetic\b|\bdocumentation-only\b|\bdoc-only\b|\btypo\b/i.test(content);
+  if (mechanicalKeyword && allowedPaths > 0 && allowedPaths <= 3 && !hasRiskySurface) {
+    return {
+      round,
+      tier: 'implementer-only',
+      confidence: 0.80,
+      rationale: `implementer-only anchor: ${allowedPaths} ALLOWED path(s); mechanical/cosmetic; no risky surface`,
+      decision_path: ['heuristic_rule_3_implementer_only'],
+      router_version: ROUTER_VERSION,
+      mode: 'heuristic',
+    };
+  }
+
+  // RULE 4: audit (confidence 0.75)
+  const auditMatches: string[] = [];
+  if (/\bmethodology\b/i.test(content)) auditMatches.push('methodology');
+  if (/REINFORCEMENT consolidation|MR-2 Pass|re-accretion guard/i.test(content)) auditMatches.push('REINFORCEMENT consolidation');
+  if (/--tier audit\b/.test(content)) auditMatches.push('--tier audit');
+  if (/audit-tier|\(audit-tier/.test(content)) auditMatches.push('audit-tier heading');
+  if (auditMatches.length > 0) {
+    return {
+      round,
+      tier: 'audit',
+      confidence: 0.75,
+      rationale: `audit anchor: ${auditMatches.slice(0, 2).join(', ')}`,
+      decision_path: ['heuristic_rule_4_audit'],
+      router_version: ROUTER_VERSION,
+      mode: 'heuristic',
+    };
+  }
+
+  // RULE 5: default — ambiguous directive
   return {
     round,
-    tier: c.tier as RouterResult['tier'], // classifyTier never returns 'solo'
-    confidence: c.confidence,
-    rationale: c.matched,
-    decision_path: ['core_classifyTier'],
+    tier: 'full',
+    confidence: 0.50,
+    rationale: 'ambiguous directive; defaulting to full per uncertainty escape hatch',
+    decision_path: ['heuristic_rule_5_default'],
     router_version: ROUTER_VERSION,
     mode: 'heuristic',
   };
