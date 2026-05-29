@@ -26,7 +26,9 @@ const result = await runRound(
 
 ## ⚠️ Verification status
 
-**The mapping logic is fully unit-tested** (7/7) by injecting a fake `query` stream — `mapUsage`, `extractArtifacts`, `detectStatus`, `buildQueryOptions`, and `spawnRole` end-to-end with mocked SDK messages. **The live path — calling the real `@anthropic-ai/claude-agent-sdk` — has NOT been run here** (no SDK install / API key in the build env). The SDK API was verified against the official TypeScript reference (2026-05-29), but treat the live run as unconfirmed until you smoke-test it.
+**The mapping logic is fully unit-tested** (7/7) by injecting a fake `query` stream — `mapUsage`, `extractArtifacts`, `detectStatus`, `buildQueryOptions`, and `spawnRole` end-to-end with mocked SDK messages.
+
+**✅ The live path is VERIFIED (2026-05-29).** `npm run smoke` was run against a real model (Claude Code / Max subscription auth, no API key): the Implementer role ran on `claude-sonnet-4-6`, wrote a correct `add(a,b)` module + a passing `node:test`, and reported real usage (357,886 cache-read + 2,760 output tokens). All five checks passed. The adapter works end-to-end against a real model.
 
 ### Operator smoke test
 
@@ -34,11 +36,14 @@ A runnable harness lives at [`smoke/smoke.ts`](smoke/smoke.ts). It runs one real
 
 ```bash
 npm install                                # at the REPO ROOT — brings the SDK (a dependency of this package)
-export ANTHROPIC_API_KEY=sk-ant-...         # a REAL key, not the literal placeholder
-npm run smoke                               # real run (spends a little); --tier audit to add the Reviewer
-npm run smoke:mock                          # offline self-test (no key) — verifies the harness itself
+# Auth: either be logged into Claude Code (Pro/Max subscription) with NO key set,
+#       or `export ANTHROPIC_API_KEY=sk-ant-...` (a real key). A placeholder key
+#       OVERRIDES the subscription login — unset it if you hit "Invalid API key".
+npm run smoke                              # real run (spends a little); --tier audit adds the Reviewer
+ANCHOR_SMOKE_MAX_TURNS=40 npm run smoke    # bump the per-role turn cap for heavier tasks (default 30)
+npm run smoke:mock                         # offline self-test (no auth) — verifies the harness itself
 ```
 
-`npm run smoke:mock` is verified green (orchestration + reporting + on-disk check) with no key. `npm run smoke` is the **operator-run step that closes the live-path verification gap** — confirm all five checks pass before relying on the adapter against a real model.
+`npm run smoke:mock` is verified green offline. `npm run smoke` was run live (2026-05-29, Max subscription) and passed all five checks.
 
 The SDK is a normal **dependency** of this package, so `npm install` at the workspace root brings it. It is still `import()`-ed lazily (and tests inject `queryFn`), so the adapter loads without touching the SDK until a real run.

@@ -59,10 +59,11 @@ async function main() {
     catch { fail('@anthropic-ai/claude-agent-sdk not resolvable. Run `npm install` at the repo root (it is a dependency of this package), or use --mock.'); }
   }
 
+  const maxTurns = Number(args[args.indexOf('--max-turns') + 1]) || Number(process.env.ANCHOR_SMOKE_MAX_TURNS) || 30;
   const adapter = new AgentSdkAdapter({
     cwd: dir,
     permissionMode: 'acceptEdits',
-    maxTurns: 12,
+    maxTurns,
     queryFn: mock ? mockQueryFor(dir) : undefined,
   });
 
