@@ -4,7 +4,7 @@
 
 The name comes from the **four-anchor pre-merge defense** — the structural backbone of this methodology. Each anchor is a discipline checkpoint; together they catch what single-pass review misses.
 
-This is a methodology pack, not a framework. It is a set of explicit disciplines you (and your agents) apply at specific moments in a project — not a runtime, not a library, not a platform. It can be applied alongside [Superpowers](https://github.com/obra/superpowers), [CrewAI](https://github.com/crewaiinc/crewai), [LangGraph](https://github.com/langchain-ai/langgraph), [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), or any other agent runtime. It can also be applied with a single agent or no agents at all.
+This is primarily a methodology pack, not a framework. It is a set of explicit disciplines you (and your agents) apply at specific moments in a project. It can be applied alongside [Superpowers](https://github.com/obra/superpowers), [CrewAI](https://github.com/crewaiinc/crewai), [LangGraph](https://github.com/langchain-ai/langgraph), [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), or any other agent runtime — or with a single agent or no agents at all. _(There is now also an experimental code layer, the [`@anchor/*` tool](#the-anchor-tool-experimental), that operationalizes the disciplines as machine-enforced gates + a learning loop — see below.)_
 
 ## Quick start
 
@@ -155,6 +155,27 @@ The coordination file structure (`coordination/specs/`, `coordination/reviews/`,
 | Best for | Learning, high-stakes oversight | Production velocity |
 | Gate on churning | Human notices in real time | Halt discipline + escalation |
 | Setup | Per-chat project instructions | `run-pipeline.sh` + `CLAUDE.md` |
+
+## The `@anchor/*` tool (experimental)
+
+Anchor is primarily a *methodology*, but `packages/` now contains an experimental **tool** that operationalizes the disciplines as code — for when you want the cycle to run programmatically with the disciplines enforced by machine, not just by memory.
+
+| Package | What it is |
+|---|---|
+| [`@anchor/core`](packages/core) | The role engine (Architect→Implementer→Reviewer→Memorial state machine), tier + per-role model routing, the discipline **gates** (citation, anti-self-confirming-test, pre-emit-grilling, anti-scope), and the **memorial** service (the cross-project V/C learning loop). Dependency-free, plain TypeScript (no build step). |
+| [`@anchor/runtime-agent-sdk`](packages/runtime-agent-sdk) | A `RuntimeAdapter` that runs each role via the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/typescript). |
+| [`@anchor/cli`](packages/cli) | `anchor run / route / memorial` — the operator surface. |
+
+```bash
+npm install                                                   # workspace install (brings the Agent SDK)
+node packages/cli/src/cli.ts route --task "Modify engine/x.ts (architectural-decision)"   # dry-run routing
+node packages/cli/src/cli.ts run --mock --tier audit --task "…"                           # offline (no model/tokens)
+node packages/cli/src/cli.ts run --tier full --task "…" --cwd ./work --memorial ~/.anchor/memorial.json   # real run
+```
+
+Structural gates are on by default as advisory warnings (`--strict` to block); pass `--memorial` and a run accrues discipline V/C and reinforces those rules into future runs.
+
+**Methodology vs. tool — which to use.** The tool *mechanically enforces* a subset of the disciplines (the four gates + the memorial loop); the methodology covers the rest (PM/TPM/Coordinator roles, the full P3 axes, the bash overnight pipeline). The tool is **experimental and reference-grade** — the engine, gates, and memorial are unit-tested and the Agent-SDK adapter is live-verified, but it has not yet been dogfooded to ship a real project, so the bash `run-pipeline.sh` ([Usage modes](#usage-modes)) remains the battle-tested path. Use the tool for programmatic, machine-enforced discipline; use the methodology + bash pipeline for production work today.
 
 ## Origin
 
