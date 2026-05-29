@@ -30,13 +30,15 @@ const result = await runRound(
 
 ### Operator smoke test
 
+A runnable harness lives at [`smoke/smoke.ts`](smoke/smoke.ts). It runs one real role (solo tier by default) on a throwaway task in a temp dir and prints the gap-closing checks: artifacts on disk, non-zero usage, cost present.
+
 ```bash
 npm i @anthropic-ai/claude-agent-sdk        # peer dep (optional; dynamically imported)
 export ANTHROPIC_API_KEY=sk-...
-# then run a small `audit`-tier round on a throwaway task and confirm:
-#   - the role writes files (artifacts populated)
-#   - result.usage has non-zero cache_read/output
-#   - total_cost_usd is present
+npm run smoke                               # real run (spends a little); --tier audit to add the Reviewer
+npm run smoke:mock                          # offline self-test (no key/SDK) — verifies the harness itself
 ```
+
+`npm run smoke:mock` is verified green (orchestration + reporting + on-disk check) with no SDK or key. `npm run smoke` is the **operator-run step that closes the live-path verification gap** — confirm all five checks pass before relying on the adapter against a real model.
 
 The SDK is a **peer dependency** (`peerDependenciesMeta.optional`) and is `import()`-ed only when no `queryFn` is supplied — so tests and installs don't require it; inject `queryFn` to run without it.
