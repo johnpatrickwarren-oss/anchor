@@ -93,19 +93,19 @@ older than a cutoff out of the live files and into a dated archive under
 `coordination/reinforcements-archive/`. The Memorial Updater nudges the operator
 to run it when any file passes a threshold (default: > 30 REINFORCED lines).
 
-### Why Opus 4.7 for Architect and Reviewer, Sonnet for Implementer and Memorial
+### Why Opus 4.8 for Architect and Reviewer, Sonnet for Implementer and Memorial
 
 The Architect's value is in design reasoning — making the right architectural
 choices and producing a spec precise enough that the Implementer makes zero design
 decisions. The Reviewer's value is in adversarial audit — finding what the
-Implementer got wrong. Both tasks benefit from Opus 4.7's extended reasoning depth
+Implementer got wrong. Both tasks benefit from Opus 4.8's extended reasoning depth
 and file-system memory across long sessions.
 
 The Implementer executes against a precise spec — a task where Sonnet 4.6 performs
 comparably at roughly 40% lower cost. The Memorial Updater synthesizes coordination
 files into structured records — file I/O and pattern matching, not frontier reasoning.
 
-This routing captures most of Opus 4.7's quality gains where they matter most
+This routing captures most of Opus 4.8's quality gains where they matter most
 while reducing total pipeline cost significantly.
 
 ---
@@ -252,7 +252,7 @@ temporally-ordered discipline checkpoints).
 ```
 PRD.md  (you write this)
   ↓
-ARCHITECT session  [Opus 4.7]
+ARCHITECT session  [Opus 4.8]
   Reads: PRD + cross-project memorial reinforcements
   Produces: coordination/specs/Q-RNN-SPEC.md
   Writes: NEXT-ROLE.md → IMPLEMENTER / READY
@@ -262,7 +262,7 @@ IMPLEMENTER session  [Sonnet 4.6]
   Produces: src/ + tests/
   On halt: writes DIAGNOSTIC + sets NEXT-ROLE.md → ESCALATE
   ↓
-REVIEWER session  [Opus 4.7]
+REVIEWER session  [Opus 4.8]
   Reads: PRD + spec + code (cold — no Implementer reasoning)
   Produces: coordination/reviews/REVIEWER-REPORT-RNN.md
   CRITICAL findings → ESCALATE

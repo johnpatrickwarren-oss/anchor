@@ -1,0 +1,9 @@
+{
+  "_comment": "Single source of truth for model IDs by capability class. Routing logic (selectors, run-pipeline.sh) should reference CLASSES (reasoning/balanced/cheap), never literal model IDs, so a new model release is a one-line edit here. Pin DATED snapshot IDs (not '-latest' aliases) to preserve reproducibility of the audit trail. Update via scripts/refresh-models.ts (proposes diffs; human-gated; re-run the router corpora before adopting). Migration in progress: impl-model-select.ts reads this file; run-pipeline.sh's other MODEL_* vars are still literals pending the manifest refactor.",
+  "updated": "2026-05-28",
+  "classes": {
+    "reasoning": "claude-opus-4-8",
+    "balanced": "claude-sonnet-4-6",
+    "cheap": "claude-haiku-4-5-20251001"
+  }
+}

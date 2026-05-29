@@ -1,0 +1,7 @@
+[
+  {"fixture": "F1-default-balanced.md", "tier": "full",             "expect_class": "balanced",  "expect_model": "claude-sonnet-4-6"},
+  {"fixture": "F2-mechanical-haiku.md", "tier": "implementer-only", "expect_class": "cheap",     "expect_model": "claude-haiku-4-5-20251001"},
+  {"fixture": "F2-mechanical-haiku.md", "tier": "full",             "expect_class": "balanced",  "expect_model": "claude-sonnet-4-6"},
+  {"fixture": "F3-engine-opus.md",      "tier": "full",             "expect_class": "reasoning", "expect_model": "claude-opus-4-8"},
+  {"fixture": "F4-coordinator-na.md",   "tier": "coordinator-only", "expect_class": "n/a",       "expect_model": "n/a"}
+]
