@@ -49,9 +49,11 @@ async function main() {
   console.log(`tier: ${tier}\nsandbox: ${dir}\n`);
 
   if (!mock) {
-    if (!process.env.ANTHROPIC_API_KEY) fail('ANTHROPIC_API_KEY not set (or run with --mock).');
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) fail('ANTHROPIC_API_KEY not set (or run with --mock).');
+    if (!/^sk-ant-/.test(key)) console.warn(`⚠ ANTHROPIC_API_KEY="${key.slice(0, 7)}…" doesn't look like an Anthropic key (expected sk-ant-…) — did you paste the placeholder? Continuing anyway.`);
     try { await import('@anthropic-ai/claude-agent-sdk' as string); }
-    catch { fail('@anthropic-ai/claude-agent-sdk not installed. Run: npm i @anthropic-ai/claude-agent-sdk (or use --mock).'); }
+    catch { fail('@anthropic-ai/claude-agent-sdk not resolvable. Run `npm install` at the repo root (it is a dependency of this package), or use --mock.'); }
   }
 
   const adapter = new AgentSdkAdapter({

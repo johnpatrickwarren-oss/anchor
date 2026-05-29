@@ -33,12 +33,12 @@ const result = await runRound(
 A runnable harness lives at [`smoke/smoke.ts`](smoke/smoke.ts). It runs one real role (solo tier by default) on a throwaway task in a temp dir and prints the gap-closing checks: artifacts on disk, non-zero usage, cost present.
 
 ```bash
-npm i @anthropic-ai/claude-agent-sdk        # peer dep (optional; dynamically imported)
-export ANTHROPIC_API_KEY=sk-...
+npm install                                # at the REPO ROOT — brings the SDK (a dependency of this package)
+export ANTHROPIC_API_KEY=sk-ant-...         # a REAL key, not the literal placeholder
 npm run smoke                               # real run (spends a little); --tier audit to add the Reviewer
-npm run smoke:mock                          # offline self-test (no key/SDK) — verifies the harness itself
+npm run smoke:mock                          # offline self-test (no key) — verifies the harness itself
 ```
 
-`npm run smoke:mock` is verified green (orchestration + reporting + on-disk check) with no SDK or key. `npm run smoke` is the **operator-run step that closes the live-path verification gap** — confirm all five checks pass before relying on the adapter against a real model.
+`npm run smoke:mock` is verified green (orchestration + reporting + on-disk check) with no key. `npm run smoke` is the **operator-run step that closes the live-path verification gap** — confirm all five checks pass before relying on the adapter against a real model.
 
-The SDK is a **peer dependency** (`peerDependenciesMeta.optional`) and is `import()`-ed only when no `queryFn` is supplied — so tests and installs don't require it; inject `queryFn` to run without it.
+The SDK is a normal **dependency** of this package, so `npm install` at the workspace root brings it. It is still `import()`-ed lazily (and tests inject `queryFn`), so the adapter loads without touching the SDK until a real run.

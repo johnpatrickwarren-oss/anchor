@@ -11,8 +11,8 @@ anchor route --task "Modify engine/detectors/fcp.ts (architectural-decision)"
 # run a round offline (no model/tokens) — self-routes tier+models from the task
 anchor run --mock --task "mechanical typo fix in README"     # -> implementer-only, Haiku
 
-# run a round for real (needs key + SDK)
-npm i @anthropic-ai/claude-agent-sdk && export ANTHROPIC_API_KEY=sk-...
+# run a round for real (needs a real key; `npm install` at the repo root brings the SDK)
+npm install && export ANTHROPIC_API_KEY=sk-ant-...
 anchor run --tier audit --task "Implement compareSemver" --cwd ./work --memorial ~/.anchor/memorial.json
 
 # memorial management
@@ -29,6 +29,6 @@ anchor memorial prune             # stabilize/retire well-internalized entries
 | `anchor route` | Dry-run: print the classified tier (+ confidence/matched rule) and per-role model overrides. Offline. |
 | `anchor memorial <list\|ratios\|prune>` | Inspect/maintain the memorial store (`--memorial <path>`, default in-memory). |
 
-`--mock` runs the full pipeline offline with a deterministic adapter (no model, no tokens) — useful to see routing + the role cycle without spending. Real runs require `ANTHROPIC_API_KEY` and the `@anthropic-ai/claude-agent-sdk` peer dep; `anchor run` preflights both and fails with guidance if missing.
+`--mock` runs the full pipeline offline with a deterministic adapter (no model, no tokens) — useful to see routing + the role cycle without spending. Real runs require a real `ANTHROPIC_API_KEY` (the `@anthropic-ai/claude-agent-sdk` ships via `npm install`); `anchor run` preflights the key and fails with guidance if missing.
 
 The command handlers are dependency-injected (adapter, persistence, clock, stdout) and unit-tested offline (8 tests); the wired stack is validated end-to-end via `--mock`.
