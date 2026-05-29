@@ -16,3 +16,6 @@ export {
   verifyCitations, parseCitationTable, checkAntiSelfConfirming, gateResult, toGateOutcome,
 } from './gates/index.ts';
 export type { Finding, Severity, GateResult, CitationResolver, Mutation, MutationRunner } from './gates/index.ts';
+// Phase 4 — memorial service (the cross-project learning loop).
+export { MemorialStore, MemoryPersistence, JsonFilePersistence } from './memorial/index.ts';
+export type { MemorialEntry, MemorialStatus, MemorialPersistence, RatioRow, MemorialStoreOptions, PruneThresholds } from './memorial/index.ts';
