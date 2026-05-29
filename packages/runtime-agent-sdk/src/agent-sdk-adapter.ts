@@ -49,12 +49,19 @@ export function extractArtifacts(messages: SdkMessage[]): string[] {
 }
 
 // Role status from the agent's final text, using Anchor's NEXT-ROLE signalling conventions.
+// Anchored to DELIBERATE line-leading status markers (optionally "STATUS:") so that prose
+// mentions — e.g. "no HALT/DIAGNOSTIC was needed" — are NOT mistaken for a halt. (A naive
+// bare-keyword match false-positived a successful Implementer in live testing.)
+const ESCALATE_RE = /^[>\s*\-]*(?:STATUS:\s*)?ESCALATE\b[:\s\-]*(.*)$/im;
+const BLOCK_RE = /^[>\s*\-]*(?:STATUS:\s*)?(?:HALT|BLOCKED|DIAGNOSTIC)\b/im;
+
 export function detectStatus(finalText: string, role: Role): { status: RoleStatus; escalation?: Escalation } {
-  if (/\bESCALATE\b/.test(finalText)) {
-    const q = finalText.match(/ESCALATE[:\-\s]+(.+)/)?.[1]?.trim() ?? 'operator decision required';
+  const esc = finalText.match(ESCALATE_RE);
+  if (esc) {
+    const q = (esc[1] || '').trim() || 'operator decision required';
     return { status: 'ESCALATE', escalation: { question: q.slice(0, 500), raisedBy: role } };
   }
-  if (/\bHALT\b|\bDIAGNOSTIC\b|\bBLOCKED\b/.test(finalText)) return { status: 'BLOCKED' };
+  if (BLOCK_RE.test(finalText)) return { status: 'BLOCKED' };
   return { status: 'READY' };
 }
 

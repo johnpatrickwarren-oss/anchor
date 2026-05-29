@@ -63,10 +63,17 @@ test('extractArtifacts collects write/edit tool paths, deduped; ignores read too
   assert.deepEqual(extractArtifacts(msgs), ['b.ts']);
 });
 
-test('detectStatus reads Anchor NEXT-ROLE signals', () => {
+test('detectStatus reads Anchor NEXT-ROLE signals (line-leading markers)', () => {
   assert.equal(detectStatus('all good', 'reviewer').status, 'READY');
   assert.equal(detectStatus('HALT — spec contradicts reality', 'implementer').status, 'BLOCKED');
+  assert.equal(detectStatus('summary line\nSTATUS: BLOCKED\nreason', 'implementer').status, 'BLOCKED');
   assert.equal(detectStatus('ESCALATE: A or B?', 'architect').status, 'ESCALATE');
+});
+
+test('detectStatus does NOT false-positive on prose mentions of halt words (live-run regression)', () => {
+  // A successful Implementer that merely *mentions* the keywords must stay READY.
+  assert.equal(detectStatus('Done. No HALT or DIAGNOSTIC was needed — the spec was clear.', 'implementer').status, 'READY');
+  assert.equal(detectStatus('Implemented isEven; 2/2 tests pass. Nothing blocked.', 'implementer').status, 'READY');
 });
 
 test('buildQueryOptions maps model, defaults permissionMode to acceptEdits, sets a role system prompt', () => {
