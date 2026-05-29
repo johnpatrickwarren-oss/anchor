@@ -49,6 +49,15 @@ test('grillingGate passes when the spec carries a grilling pass', async () => {
   assert.equal(r.status, 'COMPLETE');
 });
 
+test('advisory gate (blocking=false) surfaces warnings WITHOUT halting', async () => {
+  const r = await runRound(cfg, {
+    adapter: new MockRuntimeAdapter(),
+    gates: grillingGate(() => 'a spec without any grilling', false),
+  });
+  assert.equal(r.status, 'COMPLETE');
+  assert.ok(r.warnings.some((w) => /grilling/i.test(w)), 'advisory grilling finding should surface as a warning');
+});
+
 test('antiScopeGate halts when the spec has no anti-scope section', async () => {
   const r = await runRound(cfg, {
     adapter: new MockRuntimeAdapter(),
