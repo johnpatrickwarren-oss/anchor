@@ -1,4 +1,5 @@
 // scripts/mu-model-select.ts — Memorial-Updater model selector (R74).
+// CANONICAL: @anchor/core/routing.selectMemorialClass is the source of truth for these rules; this CLI mirrors it (full code-merge tracked as a follow-up).
 // Outputs JSON {round, model, rationale, decision_path, selector_version, matched_anchors}.
 // Bash invokes this and parses the model field to set MODEL_MEMORIAL.
 

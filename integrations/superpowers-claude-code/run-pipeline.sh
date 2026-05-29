@@ -198,7 +198,7 @@ done
 # against coordination/NEXT-ROLE.md and set TIER from the router output.
 # Explicit --tier always wins; auto-tier is advisory when no explicit tier is given.
 if [[ "$AUTO_TIER" == "true" && "$TIER_EXPLICIT" != "true" ]]; then
-  ROUTER_OUT="$(node scripts/tier-router.js --mode hybrid 2>/dev/null)" || true
+  ROUTER_OUT="$(node scripts/tier-router.ts --mode hybrid 2>/dev/null)" || true
   if [[ -n "$ROUTER_OUT" ]]; then
     ROUTER_TIER="$(echo "$ROUTER_OUT" | node -e \
       "process.stdin.resume(); let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{ try{console.log(JSON.parse(d).tier)}catch{} })" 2>/dev/null)" || true
@@ -224,9 +224,9 @@ if [[ "$TIER" == "solo" ]] || $COORDINATOR_MODE; then
   MU_FALLBACK_RATIONALE="MU not dispatched on this tier"
 else
   if [ "$MU_SONNET" = "true" ]; then
-    MU_SELECT_OUT="$(node scripts/mu-model-select.js --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" --mu-sonnet 2>/dev/null)" || true
+    MU_SELECT_OUT="$(node scripts/mu-model-select.ts --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" --mu-sonnet 2>/dev/null)" || true
   else
-    MU_SELECT_OUT="$(node scripts/mu-model-select.js --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" 2>/dev/null)" || true
+    MU_SELECT_OUT="$(node scripts/mu-model-select.ts --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" 2>/dev/null)" || true
   fi
   if [[ -n "$MU_SELECT_OUT" ]]; then
     MU_MODEL_RAW="$(echo "$MU_SELECT_OUT" | node -e \
@@ -252,7 +252,7 @@ fi
 # scripts/impl-model-select.ts shares tier-router's marker lexicon and resolves model
 # IDs from scripts/models.json (single source of truth). Mirrors the MU selector (R74).
 if $MODEL_ROUTING && ! $COORDINATOR_MODE; then
-  IMPL_SELECT_OUT="$(node scripts/impl-model-select.js --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" 2>/dev/null)" || true
+  IMPL_SELECT_OUT="$(node scripts/impl-model-select.ts --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" 2>/dev/null)" || true
   if [[ -n "$IMPL_SELECT_OUT" ]]; then
     IMPL_MODEL_FIELD="$(echo "$IMPL_SELECT_OUT" | node -e \
       "process.stdin.resume(); let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{ try{const j=JSON.parse(d); console.log(j.model)}catch{} })" 2>/dev/null)" || true
