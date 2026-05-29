@@ -21,16 +21,25 @@ Two executable gates turn Anchor disciplines from prose into code; wire them int
 - **`verifyCitations`** (`gates/citation.ts`) — ports `verify-citations.sh` + the spec template rule: every citation-table row must resolve at its pinned SHA with a verbatim snippet. Empty rows, placeholders (`TBD`, `<...>`), or paraphrased snippets fail CRITICAL; an explicit greenfield `N/A` row passes. Default `gitCitationResolver` resolves via `git show`; inject a resolver for tests.
 - **`checkAntiSelfConfirming`** (`gates/anti-self-confirming.ts`) — skill 13's mutation check: every supplied mutation must be *killed* (tests must fail); a mutation the tests survive is a self-confirming-test CRITICAL. Default `makeFileMutationRunner` applies/runs/restores; inject a runner for tests.
 
+## Memorial service (Phase 4 — implemented)
+
+The cross-project learning loop — the capability no commodity runtime has. `MemorialStore` (`memorial/`) implements the `MemorialPort` seam and adds the authoring/diagnostic API:
+
+- **Accretion** — `recordConfirmation` / `recordViolation` track per-entry V/C counts.
+- **Reinforcement injection** — `applicable(config)` returns the active entries' rules; the engine folds them into role prompts (verified end-to-end in tests).
+- **Pruning** (skill 02) — `prune()` promotes well-internalized entries to `stabilized` and auto-retires the fully-stabilized ones; a fresh violation re-opens a stabilized entry. Retired entries are kept, never deleted.
+- **Diagnostics** — `ratios()` flags entries whose violations outpace confirmations (the "sharpen or retire" signal).
+- **Persistence** — `MemoryPersistence` (tests) and `JsonFilePersistence` (a cross-project `~/.anchor/memorial.json` or a project-scoped path). Dependency-free.
+
 ## What's NOT here yet (explicit seams)
 
 - **More gates** — pre-emit grilling (agent-driven), anti-scope ledger, P3 axes. The `gates` hook is the home for them.
-- **Memorial service** (Phase 4) — `EngineDeps.memorial` (`MemorialPort`): record V/C, inject reinforcements into role prompts. The hook is wired; the store is TODO.
-- **Real adapters** — `AgentSdkAdapter` (primary), `AtomicAdapter`, `ClaudeWorkflowAdapter`. Only `MockRuntimeAdapter` ships here.
+- **More adapters** — `AgentSdkAdapter` ships in the sibling [`@anchor/runtime-agent-sdk`](../runtime-agent-sdk) package; `AtomicAdapter` / `ClaudeWorkflowAdapter` are still TODO. `MockRuntimeAdapter` ships here for tests.
 
 ## Run
 
 ```bash
-cd packages/core && node --test test/
+cd packages/core && node --test test/*.test.ts   # or: npm test
 ```
 
-Behavior is verified against the mock adapter: phase order per tier, per-role model routing + overrides, escalation pause/resume, gate-halt, and the no-bare-total measurement record.
+Behavior is verified against the mock adapter (33 tests): phase order per tier, per-role model routing + overrides, escalation pause/resume, gate-halt, the no-bare-total measurement record, the citation + anti-self-confirming gates, and the memorial store (accretion, pruning/retirement, persistence, reinforcement injection into role prompts).
