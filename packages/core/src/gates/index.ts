@@ -8,6 +8,8 @@ import type { CitationResolver } from './citation.ts';
 import type { Mutation, MutationRunner } from './anti-self-confirming.ts';
 import { verifyCitations } from './citation.ts';
 import { checkAntiSelfConfirming } from './anti-self-confirming.ts';
+import { checkGrillingEmitted } from './grilling.ts';
+import { checkAntiScope, checkAntiScopeViolation } from './anti-scope.ts';
 import { toGateOutcome } from './types.ts';
 
 export type { Finding, Severity, GateResult } from './types.ts';
@@ -16,8 +18,17 @@ export { verifyCitations, parseCitationTable } from './citation.ts';
 export type { CitationResolver } from './citation.ts';
 export { checkAntiSelfConfirming } from './anti-self-confirming.ts';
 export type { Mutation, MutationRunner } from './anti-self-confirming.ts';
+export { checkGrillingEmitted } from './grilling.ts';
+export { checkAntiScope, checkAntiScopeViolation } from './anti-scope.ts';
 
 type EngineGate = NonNullable<EngineDeps['gates']>;
+
+// Shared: read the spec-like artifact a role wrote (first .md whose path mentions "spec").
+function readSpecArtifact(r: RoleResult): string | null {
+  const spec = r.artifacts.find((p) => /spec/i.test(p) && p.endsWith('.md'));
+  if (!spec) return null;
+  try { return readFileSync(spec, 'utf8'); } catch { return null; }
+}
 
 // Combine several engine gates into one hook: pass = all pass; findings concatenated.
 export function composeGates(...gates: EngineGate[]): EngineGate {
@@ -34,17 +45,40 @@ export function composeGates(...gates: EngineGate[]): EngineGate {
 }
 
 // Engine-hook factory: read the spec the role wrote and run the citation gate against it.
-export function citationGate(resolve: CitationResolver, specTextFor?: (r: RoleResult) => string | null): EngineGate {
-  const readSpec = specTextFor ?? ((r: RoleResult) => {
-    const spec = r.artifacts.find((p) => /spec/i.test(p) && p.endsWith('.md'));
-    if (!spec) return null;
-    try { return readFileSync(spec, 'utf8'); } catch { return null; }
-  });
+export function citationGate(resolve: CitationResolver, specTextFor: (r: RoleResult) => string | null = readSpecArtifact): EngineGate {
   return (result: RoleResult) => {
     if (result.role !== 'architect' && result.role !== 'implementer') return { pass: true, findings: [] };
-    const text = readSpec(result);
+    const text = specTextFor(result);
     if (text === null) return { pass: true, findings: [] }; // nothing to check
     return toGateOutcome(verifyCitations(text, resolve));
+  };
+}
+
+// Engine-hook factory: the Architect's spec must carry a pre-emit grilling pass (structural).
+export function grillingGate(specTextFor: (r: RoleResult) => string | null = readSpecArtifact): EngineGate {
+  return (result: RoleResult) => {
+    if (result.role !== 'architect') return { pass: true, findings: [] };
+    const text = specTextFor(result);
+    if (text === null) return { pass: true, findings: [] };
+    return toGateOutcome(checkGrillingEmitted(text));
+  };
+}
+
+// Engine-hook factory: the Architect's spec must carry an anti-scope section (structural),
+// and (optionally) no written file may fall inside a declared anti-scope pattern.
+export function antiScopeGate(opts: { specTextFor?: (r: RoleResult) => string | null; patternsFor?: (r: RoleResult) => string[] } = {}): EngineGate {
+  const specTextFor = opts.specTextFor ?? readSpecArtifact;
+  return (result: RoleResult) => {
+    const findings: string[] = [];
+    if (result.role === 'architect') {
+      const text = specTextFor(result);
+      if (text !== null) { const o = toGateOutcome(checkAntiScope(text)); if (o.findings) findings.push(...o.findings); }
+    }
+    if (opts.patternsFor) {
+      const o = toGateOutcome(checkAntiScopeViolation(opts.patternsFor(result), result.artifacts));
+      if (o.findings) findings.push(...o.findings);
+    }
+    return { pass: findings.length === 0, findings };
   };
 }
 

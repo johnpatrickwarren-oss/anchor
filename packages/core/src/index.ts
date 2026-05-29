@@ -12,8 +12,10 @@ export { runRound, resumeRound } from './role-engine.ts';
 export type { EngineDeps, GateOutcome, MemorialPort } from './role-engine.ts';
 // Phase 3 — discipline gates.
 export {
-  composeGates, citationGate, antiSelfConfirmingGate, gitCitationResolver, makeFileMutationRunner,
-  verifyCitations, parseCitationTable, checkAntiSelfConfirming, gateResult, toGateOutcome,
+  composeGates, citationGate, antiSelfConfirmingGate, grillingGate, antiScopeGate,
+  gitCitationResolver, makeFileMutationRunner,
+  verifyCitations, parseCitationTable, checkAntiSelfConfirming, checkGrillingEmitted,
+  checkAntiScope, checkAntiScopeViolation, gateResult, toGateOutcome,
 } from './gates/index.ts';
 export type { Finding, Severity, GateResult, CitationResolver, Mutation, MutationRunner } from './gates/index.ts';
 // Phase 4 — memorial service (the cross-project learning loop).
