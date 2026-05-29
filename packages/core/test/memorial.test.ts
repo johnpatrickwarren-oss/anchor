@@ -72,6 +72,35 @@ test('engine integration: a hallucinated signalled id does not crash the run', a
   assert.equal(store.list()[0].cCount, 0);
 });
 
+test('only the Reviewer drives accrual — a non-reviewer self-report does NOT accrue', async () => {
+  const store = new MemorialStore(new MemoryPersistence());
+  store.add(seedEntry({ id: 'd1', rule: 'r' }));
+  const adapter = new MockRuntimeAdapter({
+    handler: (spec: RoleSpec) =>
+      spec.role === 'architect' ? { memorialSignals: { confirm: ['d1'], violate: [] } } : {},
+  });
+  await runRound({ ...cfg, tier: 'full' }, { adapter, memorial: store });
+  assert.equal(store.ratios()[0].c, 0); // the architect's self-confirm is advisory, not accrued
+});
+
+test('reviewer accrual skips gate-owned disciplines and lets a violation win over a confirm', async () => {
+  const store = new MemorialStore(new MemoryPersistence());
+  store.add(seedEntry({ id: 'pre-emit-grilling', rule: 'gate-owned' }));
+  store.add(seedEntry({ id: 'custom', rule: 'c' }));
+  const adapter = new MockRuntimeAdapter({
+    handler: (spec: RoleSpec) =>
+      spec.role === 'reviewer'
+        ? { memorialSignals: { confirm: ['pre-emit-grilling', 'custom'], violate: ['custom'] } }
+        : {},
+  });
+  await runRound({ ...cfg, tier: 'full' }, { adapter, memorial: store, gateOwnedMemorialIds: ['pre-emit-grilling'] });
+  const byId = Object.fromEntries(store.ratios().map((x) => [x.id, x]));
+  assert.equal(byId['pre-emit-grilling'].c, 0); // gate-owned → not double-counted by the signal
+  assert.equal(byId['pre-emit-grilling'].v, 0);
+  assert.equal(byId['custom'].v, 1);            // violation wins
+  assert.equal(byId['custom'].c, 0);            // the conflicting confirm is dropped
+});
+
 test('triggerMatcher narrows applicability to the round', async () => {
   const s = new MemorialStore(new MemoryPersistence(), { triggerMatcher: (e, c) => c.task.includes(e.trigger) });
   s.add(seedEntry({ trigger: 'schema' }));

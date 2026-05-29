@@ -43,6 +43,9 @@ export interface EngineDeps {
   gates?: (result: RoleResult, config: RoundConfig) => Promise<GateOutcome> | GateOutcome;
   // Phase-4 seam.
   memorial?: MemorialPort;
+  // Disciplines a structural gate already accrues (e.g. the built-in grilling/anti-scope
+  // gates). Reviewer-signal accrual SKIPS these to avoid gate+signal double-counting.
+  gateOwnedMemorialIds?: string[];
 }
 
 const CAVEAT =
@@ -140,11 +143,20 @@ async function runFrom(
     }
 
     // Reviewer-driven accrual (the learning loop for ANY discipline, not just the built-in
-    // gates): feed the role's by-id memorial signals to the memorial. record() tolerates
-    // unknown ids, so a hallucinated id is ignored rather than crashing the run.
-    if (deps.memorial && result.memorialSignals) {
-      for (const id of result.memorialSignals.confirm) await deps.memorial.record('confirmation', { memorialId: id, date: config.runDate });
-      for (const id of result.memorialSignals.violate) await deps.memorial.record('violation', { memorialId: id, date: config.runDate });
+    // gates). Only the REVIEWER's signals accrue — it is the cold-eye judge, so an
+    // architect/implementer self-report is advisory, not authoritative (prevents one round
+    // double/triple-counting a discipline). Disciplines a gate already owns this round are
+    // skipped (no gate+signal double), and a violation wins over a confirmation. record()
+    // tolerates unknown ids, so a hallucinated id is ignored rather than crashing the run.
+    if (role === 'reviewer' && deps.memorial && result.memorialSignals) {
+      const gateOwned = new Set(deps.gateOwnedMemorialIds ?? []);
+      const violated = result.memorialSignals.violate.filter((id) => !gateOwned.has(id));
+      const violatedSet = new Set(violated);
+      for (const id of violated) await deps.memorial.record('violation', { memorialId: id, date: config.runDate });
+      for (const id of result.memorialSignals.confirm) {
+        if (gateOwned.has(id) || violatedSet.has(id)) continue;
+        await deps.memorial.record('confirmation', { memorialId: id, date: config.runDate });
+      }
     }
 
     handoff[role] = result.handoff;

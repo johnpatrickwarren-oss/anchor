@@ -1,9 +1,10 @@
 // @anchor/cli — command handlers. Dependency-injected (adapter, persistence, clock, stdout)
 // so every command is unit-testable offline; cli.ts wires the real defaults.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import {
-  runRound, runRoundFromDirective, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
+  runRound, runRoundFromDirective, resumeRound, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
   composeGates, grillingGate, antiScopeGate, seedBuiltinDisciplines,
 } from '@anchor/core';
 import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult } from '@anchor/core';
@@ -26,7 +27,7 @@ export function defaultContext(): CliContext {
     stdout: (s) => console.log(s),
     makeAdapter: (flags) => bool(flags, 'mock')
       ? new MockRuntimeAdapter()
-      : new AgentSdkAdapter({ cwd: str(flags, 'cwd') ?? process.cwd(), maxTurns: Number(str(flags, 'maxTurns')) || 40, permissionMode: 'acceptEdits' }),
+      : new AgentSdkAdapter({ cwd: str(flags, 'cwd') ?? process.cwd(), maxTurns: Number(str(flags, 'maxTurns')) || 80, permissionMode: 'acceptEdits' }),
     makePersistence: (path) => path ? new JsonFilePersistence(path) : new MemoryPersistence(),
   };
 }
@@ -82,10 +83,26 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
     grillingGate(undefined, strict, memorial ? { sink: memorial, memorialId: 'pre-emit-grilling' } : undefined),
     antiScopeGate({ blocking: strict, accrual: memorial ? { sink: memorial, memorialId: 'anti-scope' } : undefined }),
   );
-  const deps = { adapter, memorial, gates };
   const roundId = str(flags, 'round') ?? 'R01';
-  const directiveFile = str(flags, 'directive');
+  const deps = {
+    adapter, memorial, gates,
+    // The built-in gates accrue these; reviewer-signal accrual skips them (no double-count).
+    gateOwnedMemorialIds: memorial && !bool(flags, 'no-gates') ? ['pre-emit-grilling', 'anti-scope'] : undefined,
+  };
+  const statePath = str(flags, 'state') ?? join(ctx.cwd, '.anchor', `round-${roundId}.json`);
 
+  // ── resume a paused round (e.g. after a maxTurns pause: bump --maxTurns and resume) ──
+  if (bool(flags, 'resume')) {
+    let paused: RunResult;
+    try { paused = JSON.parse(readFileSync(statePath, 'utf8')) as RunResult; }
+    catch { ctx.stdout(`error: no paused round at ${statePath} — pass --state <path> or the matching --round`); return { code: 2 }; }
+    const result = await resumeRound(paused, { answer: str(flags, 'answer') ?? 'operator resumed (turn budget raised)' }, deps);
+    ctx.stdout(renderRun(result));
+    persistIfPaused(result, statePath, ctx);
+    return { code: result.status === 'COMPLETE' ? 0 : 1, result };
+  }
+
+  const directiveFile = str(flags, 'directive');
   const specPath = str(flags, 'spec'); // optional canonical spec path (threaded to Architect + gates)
   let result: RunResult;
   if (directiveFile || (str(flags, 'task') && !str(flags, 'tier'))) {
@@ -98,7 +115,20 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
     result = await runRound({ roundId, tier, task, runDate: ctx.now(), specPath }, deps);
   }
   ctx.stdout(renderRun(result));
+  persistIfPaused(result, statePath, ctx);
   return { code: result.status === 'COMPLETE' ? 0 : 1, result };
+}
+
+// Persist a PAUSED run's full result so `anchor run --resume` can pick it up later.
+function persistIfPaused(result: RunResult, statePath: string, ctx: CliContext): void {
+  if (result.status !== 'PAUSED') return;
+  try {
+    mkdirSync(dirname(statePath), { recursive: true });
+    writeFileSync(statePath, JSON.stringify(result, null, 2));
+    ctx.stdout(`paused state saved → ${statePath}\n  resume with: anchor run --resume --state ${statePath} [--maxTurns <higher>]`);
+  } catch (e) {
+    ctx.stdout(`warning: could not save paused state to ${statePath}: ${(e as Error).message}`);
+  }
 }
 
 // ── anchor memorial <list|ratios|prune> ──

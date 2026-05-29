@@ -150,3 +150,38 @@ test('memorial unknown subcommand errors', async () => {
   const { ctx } = testCtx();
   assert.equal((await cmdMemorial('frobnicate', {}, ctx)).code, 2);
 });
+
+test('run pauses on escalation, persists state, and --resume completes the round', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-resume-'));
+  const statePath = join(dir, 'state.json');
+  let escalatedOnce = false;
+  const ctx: CliContext = {
+    cwd: dir,
+    now: () => '2026-05-29',
+    stdout: () => {},
+    makeAdapter: () => new MockRuntimeAdapter({
+      handler: (spec) => {
+        // First time the implementer runs, escalate (→ PAUSED, no onEscalate); on resume, complete.
+        if (spec.role === 'implementer' && !escalatedOnce) {
+          escalatedOnce = true;
+          return { status: 'ESCALATE', escalation: { question: 'turn budget?', raisedBy: 'implementer' } };
+        }
+        return {};
+      },
+    }),
+    makePersistence: () => new MemoryPersistence(),
+  };
+  const r1 = await cmdRun({ mock: true, tier: 'audit', task: 'x', state: statePath }, ctx);
+  assert.equal(r1.result!.status, 'PAUSED');
+  assert.equal(r1.result!.pausedAt, 'implementer');
+
+  const r2 = await cmdRun({ mock: true, tier: 'audit', task: 'x', state: statePath, resume: true }, ctx);
+  assert.equal(r2.result!.status, 'COMPLETE');
+  assert.deepEqual(r2.result!.phases.map((p) => p.role), ['implementer', 'reviewer', 'memorial']);
+});
+
+test('--resume with no saved state errors (code 2)', async () => {
+  const { ctx } = testCtx();
+  const r = await cmdRun({ mock: true, resume: true, state: join(tmpdir(), 'anchor-no-such-state-xyz.json') }, ctx);
+  assert.equal(r.code, 2);
+});
