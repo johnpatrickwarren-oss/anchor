@@ -10,6 +10,8 @@
   "peerDependencies": { "@anthropic-ai/claude-agent-sdk": ">=0.1.0" },
   "peerDependenciesMeta": { "@anthropic-ai/claude-agent-sdk": { "optional": true } },
   "scripts": {
-    "test": "node --test test/*.test.ts"
+    "test": "node --test test/*.test.ts",
+    "smoke": "node smoke/smoke.ts",
+    "smoke:mock": "node smoke/smoke.ts --mock"
   }
 }
