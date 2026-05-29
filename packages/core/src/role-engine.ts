@@ -68,7 +68,8 @@ const ROLE_OBLIGATIONS: Record<Role, string> = {
 
 function defaultPrompt(role: Role, config: RoundConfig, handoff: Record<string, unknown>): string {
   const priorRoles = Object.keys(handoff).join(', ') || 'none';
-  return `ROLE: ${role}\nROUND: ${config.roundId} (tier ${config.tier})\nTASK: ${config.task}\nPRIOR HANDOFFS FROM: ${priorRoles}\n\nYour obligations:\n${ROLE_OBLIGATIONS[role]}`;
+  const specPathNote = role === 'architect' && config.specPath ? `\nWrite the spec to: ${config.specPath}` : '';
+  return `ROLE: ${role}\nROUND: ${config.roundId} (tier ${config.tier})\nTASK: ${config.task}\nPRIOR HANDOFFS FROM: ${priorRoles}\n\nYour obligations:\n${ROLE_OBLIGATIONS[role]}${specPathNote}`;
 }
 
 // Lean context-by-reference: a role gets the prior roles' artifact PATHS, not their text

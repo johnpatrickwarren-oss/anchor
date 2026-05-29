@@ -65,6 +65,24 @@ export function detectStatus(finalText: string, role: Role): { status: RoleStatu
   return { status: 'READY' };
 }
 
+// Deterministic status CONTRACT: the adapter asks each role to end with an explicit
+// `ANCHOR-STATUS: <READY|ESCALATE|BLOCKED>` line (see buildPrompt). Parsing that token is
+// unambiguous — unlike prose-sniffing. Falls back to the (anchored) heuristic only when the
+// agent didn't emit the sentinel, so older prompts / non-compliant agents still degrade gracefully.
+const CONTRACT_RE = /^ANCHOR-STATUS:\s*(READY|ESCALATE|BLOCKED)\b/gim;
+const CONTRACT_ESCALATE_RE = /^ANCHOR-ESCALATE:\s*(.+)$/im;
+
+export function parseStatusContract(finalText: string, role: Role): { status: RoleStatus; escalation?: Escalation } {
+  const matches = [...finalText.matchAll(CONTRACT_RE)];
+  if (matches.length === 0) return detectStatus(finalText, role); // fallback to heuristic
+  const status = matches[matches.length - 1][1].toUpperCase() as RoleStatus; // last wins
+  if (status === 'ESCALATE') {
+    const q = (finalText.match(CONTRACT_ESCALATE_RE)?.[1] || '').trim() || 'operator decision required';
+    return { status, escalation: { question: q.slice(0, 500), raisedBy: role } };
+  }
+  return { status };
+}
+
 export function lastAssistantText(messages: SdkMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -89,9 +107,14 @@ export function buildQueryOptions(spec: RoleSpec, opts: AgentSdkAdapterOptions):
   };
 }
 
+const STATUS_CONTRACT =
+  '\n\nWhen finished, end your final message with a status line:\n' +
+  'ANCHOR-STATUS: READY   (use ESCALATE if an operator decision is required, or BLOCKED if you must halt)\n' +
+  'If ESCALATE, add a second line — ANCHOR-ESCALATE: <one-line bounded question>.';
+
 export function buildPrompt(spec: RoleSpec): string {
   const refs = spec.contextRefs.length ? `\n\nContext files (read as needed): ${spec.contextRefs.join(', ')}` : '';
-  return `${spec.prompt}${refs}`;
+  return `${spec.prompt}${refs}${STATUS_CONTRACT}`;
 }
 
 // ── The adapter ──────────────────────────────────────────────────────────────
@@ -113,7 +136,7 @@ export class AgentSdkAdapter implements RuntimeAdapter {
     const finalText = lastAssistantText(collected);
     const det = result && result.subtype !== 'success'
       ? { status: 'BLOCKED' as RoleStatus }
-      : detectStatus(finalText, spec.role);
+      : parseStatusContract(finalText, spec.role);
 
     return {
       role: spec.role,

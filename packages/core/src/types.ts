@@ -59,6 +59,10 @@ export interface RoundConfig {
   tier: Tier;
   task: string; // the brief / PRD reference
   runDate: string; // passed in — engines must not self-generate dates (POC C0.5)
+  // Canonical path the Architect writes the spec to. When set, the engine instructs the
+  // Architect to write there and the discipline gates read it from here (instead of
+  // guessing the filename from the role's artifacts).
+  specPath?: string;
 }
 
 export interface PhaseRecord {

@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   checkGrillingEmitted, checkAntiScope, checkAntiScopeViolation,
   grillingGate, antiScopeGate, runRound, MockRuntimeAdapter,
@@ -68,6 +71,18 @@ test('antiScopeGate halts when the spec has no anti-scope section', async () => 
 });
 
 // ── prompt wiring (layer 2): the default role prompts now instruct the disciplines ──
+test('gates read config.specPath (canonical) — not just the role artifacts', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-specpath-'));
+  const specPath = join(dir, 'Q-R01-SPEC.md');
+  writeFileSync(specPath, '# Spec\nBody with no self-review buckets and no excluded-items list.\n'); // omits grilling
+  const r = await runRound(
+    { roundId: 'R01', tier: 'full', task: 'demo', runDate: '2026-05-29', specPath },
+    { adapter: new MockRuntimeAdapter(), gates: grillingGate(undefined, true) }, // reads config.specPath
+  );
+  assert.equal(r.status, 'BLOCKED'); // canonical spec has no grilling -> blocking gate halts
+  assert.equal(r.pausedAt, 'architect');
+});
+
 test('default role prompts instruct grilling + anti-scope (architect) and anti-self-confirming (implementer/reviewer)', async () => {
   const prompts: Record<string, string> = {};
   const adapter = new MockRuntimeAdapter({ handler: (spec: RoleSpec) => { prompts[spec.role] = spec.prompt; return {}; } });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, buildQueryOptions,
+  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, buildQueryOptions,
 } from '../src/index.ts';
 import type { SdkMessage } from '../src/index.ts';
 
@@ -74,6 +74,24 @@ test('detectStatus does NOT false-positive on prose mentions of halt words (live
   // A successful Implementer that merely *mentions* the keywords must stay READY.
   assert.equal(detectStatus('Done. No HALT or DIAGNOSTIC was needed — the spec was clear.', 'implementer').status, 'READY');
   assert.equal(detectStatus('Implemented isEven; 2/2 tests pass. Nothing blocked.', 'implementer').status, 'READY');
+});
+
+test('parseStatusContract reads the explicit ANCHOR-STATUS sentinel (READY/ESCALATE/BLOCKED)', () => {
+  assert.equal(parseStatusContract('work…\nANCHOR-STATUS: READY', 'implementer').status, 'READY');
+  assert.equal(parseStatusContract('…\nANCHOR-STATUS: BLOCKED', 'implementer').status, 'BLOCKED');
+  const e = parseStatusContract('…\nANCHOR-STATUS: ESCALATE\nANCHOR-ESCALATE: A or B?', 'architect');
+  assert.equal(e.status, 'ESCALATE');
+  assert.match(e.escalation!.question, /A or B\?/);
+});
+
+test('the explicit sentinel OVERRIDES a heuristic false-positive', () => {
+  // "HALT:" at line start would trip the heuristic, but the sentinel is authoritative.
+  assert.equal(parseStatusContract('HALT: (not really)\nANCHOR-STATUS: READY', 'implementer').status, 'READY');
+});
+
+test('parseStatusContract falls back to the heuristic when no sentinel is present', () => {
+  assert.equal(parseStatusContract('summary\nSTATUS: BLOCKED', 'implementer').status, 'BLOCKED');
+  assert.equal(parseStatusContract('all good', 'reviewer').status, 'READY');
 });
 
 test('buildQueryOptions maps model, defaults permissionMode to acceptEdits, sets a role system prompt', () => {

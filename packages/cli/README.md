@@ -25,7 +25,7 @@ anchor memorial prune             # stabilize/retire well-internalized entries
 
 | Command | What it does |
 |---|---|
-| `anchor run` | Run a round. `--directive <file>` or `--task "<text>"` (self-routes tier+models if no `--tier`); `--tier`, `--cwd`, `--round`, `--memorial <path>`, `--mock`, `--strict`, `--no-gates`. |
+| `anchor run` | Run a round. `--directive <file>` or `--task "<text>"` (self-routes tier+models if no `--tier`); `--tier`, `--cwd`, `--round`, `--spec <path>` (canonical spec path the Architect writes to and gates read), `--memorial <path>`, `--mock`, `--strict`, `--no-gates`. |
 | `anchor route` | Dry-run: print the classified tier (+ confidence/matched rule) and per-role model overrides. Offline. |
 | `anchor memorial <list\|ratios\|prune>` | Inspect/maintain the memorial store (`--memorial <path>`, default in-memory). |
 
