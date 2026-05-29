@@ -25,5 +25,5 @@ export type { Finding, Severity, GateResult, CitationResolver, Mutation, Mutatio
 export { MemorialStore, MemoryPersistence, JsonFilePersistence, BUILTIN_DISCIPLINES, seedBuiltinDisciplines, keywordRelevance } from './memorial/index.ts';
 export type { MemorialEntry, MemorialStatus, MemorialPersistence, RatioRow, MemorialStoreOptions, PruneThresholds } from './memorial/index.ts';
 // Routing — derive tier + per-role models from a directive (self-routing).
-export { classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, selectReviewerClass, selectRoleModelClasses } from './routing/index.ts';
+export { classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, selectReviewerClass, selectArchitectClass, selectRoleModelClasses } from './routing/index.ts';
 export type { TierClassification, RouteResult, RouteOptions, DirectiveRunMeta } from './routing/index.ts';

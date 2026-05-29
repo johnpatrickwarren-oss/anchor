@@ -24,6 +24,16 @@ export function selectMemorialClass(directive: string, tier: Tier): ModelClass {
   return 'cheap';
 }
 
+// Architect (cost-aware): the architect only runs on FULL tier, so the meaningful risk
+// signal is whether the change is genuinely architectural. Mirror the implementer: opus
+// reasoning for load-bearing work (engine/architectural/novel-pattern/novel-data-model),
+// Sonnet for routine full-tier features. The downstream gates (citation/anti-scope) + the
+// risk-routed reviewer backstop a Sonnet spec on routine work.
+export function selectArchitectClass(directive: string, _tier: Tier): ModelClass {
+  if (hit(directive, HIGH_STAKES)) return 'reasoning';
+  return 'balanced';
+}
+
 // Reviewer (cost-aware): the reviewer is the most expensive role, so route its model by
 // change-risk. A load-bearing review (engine/architectural) needs opus reasoning; a clearly
 // mechanical/cosmetic change (typo, doc-only, rename) gets a cheaper Sonnet reviewer. The
@@ -44,6 +54,7 @@ export function selectRoleModelClasses(directive: string, tier: Tier): Partial<R
     implementer: selectImplementerClass(directive, tier),
     reviewer: selectReviewerClass(directive, tier),
   };
+  if (tier === 'full') out.architect = selectArchitectClass(directive, tier); // architect runs on full only
   if (tier === 'full' || tier === 'audit') out.memorial = selectMemorialClass(directive, tier);
   return out;
 }

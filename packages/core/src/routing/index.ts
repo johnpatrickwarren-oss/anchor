@@ -13,7 +13,7 @@ import { selectRoleModelClasses } from './model-router.ts';
 
 export { classifyTier } from './tier-router.ts';
 export type { TierClassification } from './tier-router.ts';
-export { selectImplementerClass, selectMemorialClass, selectReviewerClass, selectRoleModelClasses } from './model-router.ts';
+export { selectImplementerClass, selectMemorialClass, selectReviewerClass, selectArchitectClass, selectRoleModelClasses } from './model-router.ts';
 
 export interface RouteResult {
   tier: Tier;
