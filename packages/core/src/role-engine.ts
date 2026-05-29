@@ -58,7 +58,8 @@ const ROLE_OBLIGATIONS: Record<Role, string> = {
   architect:
     'Draft the spec. Include an explicit "## Anti-scope" section naming what is NOT in scope. ' +
     'Cite every inherited primitive in an "Existing architectural surface" table (file + pinned SHA + line range + verbatim snippet). ' +
-    'Before emitting, run a pre-emit grilling pass and inline its CRITICAL / LIKELY-SURFACES / PRE-EMPTABLE buckets.',
+    'Before emitting, run a pre-emit grilling pass and inline its CRITICAL / LIKELY-SURFACES / PRE-EMPTABLE buckets. ' +
+    'Emit the spec ARTIFACT only — do not narrate your process or restate the brief back to the operator. Keep every structured part COMPLETE (citation table, acceptance criteria, anti-scope, the grilling buckets); trim only prose padding and commentary, never the spec content.',
   implementer:
     "Implement exactly to the spec (cold-read; don't seek the Architect's reasoning). Every acceptance criterion gets a test, " +
     'and no test may be self-confirming (it must FAIL if the production line it checks is broken). HALT with a DIAGNOSTIC if the spec contradicts reality.',
