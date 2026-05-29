@@ -141,7 +141,11 @@ The evolved pattern for operators who have validated the methodology and want th
 
 ### Choosing a mode
 
-The modes are not mutually exclusive. A common pattern is to start a project in Mode 1 to understand the problem space, then switch to Mode 2 for execution rounds once the Architect spec is solid. The coordination file structure (`coordination/specs/`, `coordination/reviews/`, `NEXT-ROLE.md`, `MEMORIAL.md`) is identical in both modes — switching between them mid-project requires no migration.
+**Default posture (graduated).** The modes are not mutually exclusive, and the recommended path is to *graduate* between them rather than pick one forever. Start a new project — or onboard a new operator — in **Mode 1**, to confirm the role disciplines and pre-emit grilling actually catch issues on *your* codebase. Once your Architect spec discipline is solid and you've watched the cold-eye Reviewer earn its keep over a few rounds, **Mode 2 (automated / overnight) is the default for execution rounds** — that is where Anchor is designed to spend most of its time, and it is the right answer to the industry's move toward more unattended automation. For established projects, default to running Mode 2 overnight at **`audit` tier** (Implementer + Reviewer + Memorial Updater — preserves the cold-eye Reviewer, which catches the most per dollar), letting the tier-router promote to `full` when an A-factor fires and drop to `implementer-only` for purely mechanical work. Mode 1 remains the on-ramp and the high-visibility fallback for high-stakes rounds you want to watch live.
+
+This graduation is deliberate, not bureaucratic: Anchor is an N=1-distilled methodology (see [`METHODOLOGY.md`](METHODOLOGY.md) § Honest scope and limits), so trust in the autonomous pipeline is meant to be *earned* on your project before you sleep through it. The escalation gate (`STATUS: ESCALATE` pauses the pipeline and waits) means overnight mode never barrels past a genuine decision — it queues it for your morning review.
+
+The coordination file structure (`coordination/specs/`, `coordination/reviews/`, `NEXT-ROLE.md`, `MEMORIAL.md`) is identical in both modes — switching between them mid-project requires no migration.
 
 | | Manual (Mode 1) | Automated (Mode 2) |
 |---|---|---|

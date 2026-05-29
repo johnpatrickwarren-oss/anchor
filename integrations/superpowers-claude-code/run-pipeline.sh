@@ -4,7 +4,7 @@
 #
 # Fixes from v1:
 #   - Superpowers disciplines inlined; no MCP dependency in headless mode
-#   - Per-role model routing (Opus 4.7 for Architect/Reviewer, Sonnet for rest)
+#   - Per-role model routing (Opus 4.8 for Architect/Reviewer, Sonnet for rest)
 #   - Retry logic with exponential backoff on transient failures
 #   - Rate limit detection and wait/resume
 #   - Permission mode detection with --dangerously-skip-permissions fallback
@@ -67,20 +67,20 @@ TIER="full"
 RESET_NEXT_ROLE=false
 
 # Model routing
-# Opus 4.7: Architect (design reasoning) and Reviewer (adversarial audit)
+# Opus 4.8: Architect (design reasoning) and Reviewer (adversarial audit)
 # Sonnet 4.6: Implementer (execution against spec) and Memorial (synthesis)
-# Rationale: Opus 4.7's gains are concentrated in hard reasoning and agentic
+# Rationale: Opus 4.8's gains are concentrated in hard reasoning and agentic
 # file-system memory — exactly what design and adversarial audit need.
 # Sonnet 4.6 handles implementation execution and bookkeeping at 40% lower cost.
-MODEL_ARCHITECT="claude-opus-4-7"
+MODEL_ARCHITECT="claude-opus-4-8"
 MODEL_IMPLEMENTER="claude-sonnet-4-6"
-MODEL_REVIEWER="claude-opus-4-7"
+MODEL_REVIEWER="claude-opus-4-8"
 # Two model candidates for MU; selector chooses between them per directive content.
 MODEL_MEMORIAL_DEFAULT="claude-haiku-4-5-20251001"   # ~3× cost reduction vs Sonnet (R74)
 MODEL_MEMORIAL_SONNET="claude-sonnet-4-6"             # fallback for substantive cross-round work
 MODEL_MEMORIAL=""                                     # resolved at TIER-decision time
 MU_FALLBACK_RATIONALE=""
-MODEL_COORDINATOR="claude-opus-4-7"
+MODEL_COORDINATOR="claude-opus-4-8"
 MODEL_DEFAULT="claude-sonnet-4-6"
 
 # Hybrid Reviewer: when HYBRID_REVIEWER=true AND tier=audit, the Reviewer stage
@@ -243,6 +243,23 @@ else
   else
     MODEL_MEMORIAL="$MODEL_MEMORIAL_DEFAULT"
     MU_FALLBACK_RATIONALE="selector unavailable; fallback haiku"
+  fi
+fi
+
+# ── Implementer model selection ───────────────────────────────────────────────
+# Default: Sonnet (balanced). Downgrades to Haiku on implementer-only-tier mechanical
+# work; upgrades to Opus on engine/architectural rounds. Selector at
+# scripts/impl-model-select.ts shares tier-router's marker lexicon and resolves model
+# IDs from scripts/models.json (single source of truth). Mirrors the MU selector (R74).
+if $MODEL_ROUTING && ! $COORDINATOR_MODE; then
+  IMPL_SELECT_OUT="$(node scripts/impl-model-select.js --directive "$COORD/NEXT-ROLE.md" --tier "$TIER" 2>/dev/null)" || true
+  if [[ -n "$IMPL_SELECT_OUT" ]]; then
+    IMPL_MODEL_FIELD="$(echo "$IMPL_SELECT_OUT" | node -e \
+      "process.stdin.resume(); let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{ try{const j=JSON.parse(d); console.log(j.model)}catch{} })" 2>/dev/null)" || true
+    case "$IMPL_MODEL_FIELD" in
+      claude-haiku-*|claude-sonnet-*|claude-opus-*) MODEL_IMPLEMENTER="$IMPL_MODEL_FIELD" ;;
+      *) : ;;  # n/a, empty, or unexpected -> leave static default
+    esac
   fi
 fi
 
