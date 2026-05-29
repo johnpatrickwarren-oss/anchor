@@ -24,10 +24,26 @@ export function selectMemorialClass(directive: string, tier: Tier): ModelClass {
   return 'cheap';
 }
 
-// Class -> the engine's per-role override map. Returns only the roles whose model is
-// content-derived (implementer, memorial); the rest fall through to models.ts class defaults.
+// Reviewer (cost-aware): the reviewer is the most expensive role, so route its model by
+// change-risk. A load-bearing review (engine/architectural) needs opus reasoning; a clearly
+// mechanical/cosmetic change (typo, doc-only, rename) gets a cheaper Sonnet reviewer. The
+// default is opus — we only downgrade when the change is unambiguously low-risk, so review
+// quality is preserved on anything substantive.
+export function selectReviewerClass(directive: string, tier: Tier): ModelClass {
+  if (hit(directive, HIGH_STAKES)) return 'reasoning';                    // load-bearing -> opus
+  if (tier === 'solo' || tier === 'implementer-only') return 'balanced';  // trivial tiers -> sonnet
+  if (hit(directive, MECHANICAL)) return 'balanced';                      // mechanical/cosmetic/doc -> sonnet
+  return 'reasoning';                                                     // default: opus (preserve judgment)
+}
+
+// Class -> the engine's per-role override map. Returns the roles whose model is
+// content-derived (implementer, reviewer, memorial); static roles fall through to the
+// models.ts class defaults.
 export function selectRoleModelClasses(directive: string, tier: Tier): Partial<Record<Role, ModelClass>> {
-  const out: Partial<Record<Role, ModelClass>> = { implementer: selectImplementerClass(directive, tier) };
+  const out: Partial<Record<Role, ModelClass>> = {
+    implementer: selectImplementerClass(directive, tier),
+    reviewer: selectReviewerClass(directive, tier),
+  };
   if (tier === 'full' || tier === 'audit') out.memorial = selectMemorialClass(directive, tier);
   return out;
 }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, MockRuntimeAdapter,
+  classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, selectReviewerClass, MockRuntimeAdapter,
 } from '../src/index.ts';
 
 test('classifyTier — priority-ordered heuristic (first match wins)', () => {
@@ -30,6 +30,20 @@ test('selectMemorialClass — full+marker->balanced, else cheap', () => {
   assert.equal(selectMemorialClass('cross-project promotion of rule', 'full'), 'balanced');
   assert.equal(selectMemorialClass('routine round', 'full'), 'cheap');
   assert.equal(selectMemorialClass('cross-project promotion', 'audit'), 'cheap'); // markers only checked on full
+});
+
+test('selectReviewerClass — cost-aware: load-bearing->reasoning, mechanical/trivial->balanced, default opus', () => {
+  assert.equal(selectReviewerClass('touches engine/x.ts', 'full'), 'reasoning');                 // load-bearing
+  assert.equal(selectReviewerClass('architectural-decision: new pattern', 'full'), 'reasoning');
+  assert.equal(selectReviewerClass('mechanical rename', 'implementer-only'), 'balanced');         // trivial tier
+  assert.equal(selectReviewerClass('documentation-only touch-up', 'audit'), 'balanced');          // mechanical kw
+  assert.equal(selectReviewerClass('add a feature', 'full'), 'reasoning');                        // default opus (substantive)
+  assert.equal(selectReviewerClass('add a feature', 'audit'), 'reasoning');
+});
+
+test('routeRound routes the reviewer model by change-risk', () => {
+  assert.equal(routeRound('Add a sortable column to the users table').modelOverrides.reviewer, 'claude-opus-4-8'); // substantive -> opus
+  assert.equal(routeRound('documentation-only touch-up', { tierOverride: 'audit' }).modelOverrides.reviewer, 'claude-sonnet-4-6'); // mechanical -> sonnet
 });
 
 test('routeRound resolves classes to concrete model ids; tierOverride wins', () => {
