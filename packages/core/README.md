@@ -14,9 +14,16 @@ Anchor's value is not orchestration — that's commoditizing (Claude Code dynami
 - **`models.ts`** — per-role model resolution from a capability-class manifest (the `models.json` pattern; dated IDs, not `-latest`), with a per-role override seam where the dynamic selectors plug in.
 - **`types.ts`** — honest measurement shape: per-role raw token usage, never a bare total (POC AC-7).
 
+## Discipline gates (Phase 3 — implemented)
+
+Two executable gates turn Anchor disciplines from prose into code; wire them into `EngineDeps.gates` (a failing CRITICAL/MAJOR halts the run, `BLOCKED`). Use `composeGates(...)` to combine them.
+
+- **`verifyCitations`** (`gates/citation.ts`) — ports `verify-citations.sh` + the spec template rule: every citation-table row must resolve at its pinned SHA with a verbatim snippet. Empty rows, placeholders (`TBD`, `<...>`), or paraphrased snippets fail CRITICAL; an explicit greenfield `N/A` row passes. Default `gitCitationResolver` resolves via `git show`; inject a resolver for tests.
+- **`checkAntiSelfConfirming`** (`gates/anti-self-confirming.ts`) — skill 13's mutation check: every supplied mutation must be *killed* (tests must fail); a mutation the tests survive is a self-confirming-test CRITICAL. Default `makeFileMutationRunner` applies/runs/restores; inject a runner for tests.
+
 ## What's NOT here yet (explicit seams)
 
-- **Discipline gates** (Phase 3) — `EngineDeps.gates`: pre-emit grilling, citation/architectural-surface verify, anti-self-confirming-test mutation, anti-scope. A failing gate already halts the run (`BLOCKED`); the gate *implementations* are TODO.
+- **More gates** — pre-emit grilling (agent-driven), anti-scope ledger, P3 axes. The `gates` hook is the home for them.
 - **Memorial service** (Phase 4) — `EngineDeps.memorial` (`MemorialPort`): record V/C, inject reinforcements into role prompts. The hook is wired; the store is TODO.
 - **Real adapters** — `AgentSdkAdapter` (primary), `AtomicAdapter`, `ClaudeWorkflowAdapter`. Only `MockRuntimeAdapter` ships here.
 
