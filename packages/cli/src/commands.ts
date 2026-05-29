@@ -22,6 +22,16 @@ export interface CliContext {
 }
 type Flags = Record<string, string | boolean>;
 
+// Default per-round injected-rule cap — the memorial stays self-limiting out of the box.
+// `--max-rules N` overrides; `--max-rules 0` (or any non-positive) injects all eligible.
+const DEFAULT_INJECT_CAP = 12;
+function injectCapFrom(flags: Flags): number | undefined {
+  const v = str(flags, 'max-rules');
+  if (v === undefined) return DEFAULT_INJECT_CAP;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 export function defaultContext(): CliContext {
   return {
     cwd: process.cwd(),
@@ -76,7 +86,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   }
   const adapter = ctx.makeAdapter(flags);
   const memorialPath = str(flags, 'memorial');
-  const memorial = memorialPath !== undefined ? new MemorialStore(ctx.makePersistence(memorialPath)) : undefined;
+  const memorial = memorialPath !== undefined ? new MemorialStore(ctx.makePersistence(memorialPath), { injectCap: injectCapFrom(flags) }) : undefined;
   if (memorial) seedBuiltinDisciplines(memorial); // ensure the discipline entries exist to accrue against
   // Structural gates (grilling + anti-scope) are ON by default as ADVISORY warnings;
   // --strict promotes them to blocking; --no-gates disables them. With a memorial, the gates
@@ -201,7 +211,7 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
   }
 
   const memorialPath = str(flags, 'memorial');
-  const memorial = memorialPath ? new MemorialStore(ctx.makePersistence(memorialPath)) : undefined;
+  const memorial = memorialPath ? new MemorialStore(ctx.makePersistence(memorialPath), { injectCap: injectCapFrom(flags) }) : undefined;
   if (memorial) seedBuiltinDisciplines(memorial);
   const strict = bool(flags, 'strict');
   const noGates = bool(flags, 'no-gates');

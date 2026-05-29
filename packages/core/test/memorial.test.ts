@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  MemorialStore, MemoryPersistence, JsonFilePersistence, runRound, MockRuntimeAdapter,
+  MemorialStore, MemoryPersistence, JsonFilePersistence, runRound, MockRuntimeAdapter, keywordRelevance,
 } from '../src/index.ts';
 import type { RoundConfig, MemorialEntry, RoleSpec } from '../src/index.ts';
 
@@ -99,6 +99,43 @@ test('reviewer accrual skips gate-owned disciplines and lets a violation win ove
   assert.equal(byId['pre-emit-grilling'].v, 0);
   assert.equal(byId['custom'].v, 1);            // violation wins
   assert.equal(byId['custom'].c, 0);            // the conflicting confirm is dropped
+});
+
+test('injectCap caps injection to the most relevant rules (self-limiting)', async () => {
+  const s = new MemorialStore(new MemoryPersistence(), { injectCap: 2 });
+  const c = { ...cfg, task: 'change the scoring kernel sigma' };
+  s.add(seedEntry({ id: 'r-scoring', trigger: 'scoring change', rule: 'keep scoring kernel deterministic' }));
+  s.add(seedEntry({ id: 'r-kernel', trigger: 'kernel', rule: 'document kernel sigma' }));
+  s.add(seedEntry({ id: 'r-docs', trigger: 'docs', rule: 'update the readme' }));        // irrelevant
+  s.add(seedEntry({ id: 'r-cli', trigger: 'cli flag', rule: 'opt-in flags only' }));      // irrelevant
+  const rules = await s.applicable(c);
+  assert.equal(rules.length, 2);
+  assert.ok(rules.some((r) => r.includes('r-scoring')) && rules.some((r) => r.includes('r-kernel')));
+  assert.ok(!rules.some((r) => r.includes('r-docs') || r.includes('r-cli')));
+});
+
+test('a live rule (violations > confirmations) injects even beyond the cap', async () => {
+  const s = new MemorialStore(new MemoryPersistence(), { injectCap: 1 });
+  const c = { ...cfg, task: 'unrelated task xyz' };
+  s.add(seedEntry({ id: 'live-1', trigger: 't', rule: 'r' })); s.recordViolation('live-1'); // V1/C0 → live
+  s.add(seedEntry({ id: 'rel-1', trigger: 'xyz', rule: 'matches xyz' }));                    // top-1 relevant
+  s.add(seedEntry({ id: 'cold', trigger: 'nope', rule: 'irrelevant' }));
+  const rules = await s.applicable(c);
+  assert.ok(rules.some((r) => r.includes('live-1')), 'live rule always injected');
+  assert.ok(rules.some((r) => r.includes('rel-1')), 'plus the top-1 relevant');
+  assert.ok(!rules.some((r) => r.includes('cold')), 'cold irrelevant rule dropped by the cap');
+});
+
+test('no injectCap → all eligible inject (legacy behavior preserved)', async () => {
+  const s = new MemorialStore(new MemoryPersistence());
+  for (const id of ['a', 'b', 'c']) s.add(seedEntry({ id, rule: `rule ${id}` }));
+  assert.equal((await s.applicable(cfg)).length, 3);
+});
+
+test('keywordRelevance scores task-token overlap with the rule', () => {
+  const e = (over: Partial<MemorialEntry>) => ({ id: 'x', trigger: '', rule: '', origin: 'o', vCount: 0, cCount: 0, status: 'active' as const, ...over });
+  assert.ok(keywordRelevance(e({ trigger: 'scoring kernel', rule: 'sigma' }), { ...cfg, task: 'change the scoring kernel' }) >= 2);
+  assert.equal(keywordRelevance(e({ trigger: 'docs', rule: 'readme' }), { ...cfg, task: 'change the scoring kernel' }), 0);
 });
 
 test('triggerMatcher narrows applicability to the round', async () => {
