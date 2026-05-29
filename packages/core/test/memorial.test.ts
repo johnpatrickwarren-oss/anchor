@@ -138,6 +138,26 @@ test('keywordRelevance scores task-token overlap with the rule', () => {
   assert.equal(keywordRelevance(e({ trigger: 'docs', rule: 'readme' }), { ...cfg, task: 'change the scoring kernel' }), 0);
 });
 
+const me = (over: Partial<MemorialEntry>) => ({ id: 'x', trigger: '', rule: '', origin: 'o', vCount: 0, cCount: 0, status: 'active' as const, ...over });
+
+test('keywordRelevance folds morphological variants (score↔scoring, tests↔testing)', () => {
+  // task "score the tests" should still hit a rule phrased as "scoring" / "testing".
+  assert.ok(keywordRelevance(me({ trigger: 'scoring', rule: 'run the testing suite' }), { ...cfg, task: 'score the tests' }) >= 1);
+});
+
+test('keywordRelevance is word-boundary aware — short tokens do not match by substring (cli ≠ client)', () => {
+  assert.equal(keywordRelevance(me({ trigger: 'client onboarding', rule: 'welcome flow' }), { ...cfg, task: 'cli flag parsing' }), 0);
+  // but exact short domain tokens still match
+  assert.ok(keywordRelevance(me({ trigger: 'ssl', rule: 'cert rotation' }), { ...cfg, task: 'ssl renewal' }) >= 2);
+});
+
+test('keywordRelevance weights a trigger match (2) above a rule-body match (1)', () => {
+  const inTrigger = keywordRelevance(me({ trigger: 'kernel', rule: 'zzz' }), { ...cfg, task: 'the kernel' });
+  const inBody = keywordRelevance(me({ trigger: 'zzz', rule: 'the kernel here' }), { ...cfg, task: 'the kernel' });
+  assert.equal(inTrigger, 2);
+  assert.equal(inBody, 1);
+});
+
 test('triggerMatcher narrows applicability to the round', async () => {
   const s = new MemorialStore(new MemoryPersistence(), { triggerMatcher: (e, c) => c.task.includes(e.trigger) });
   s.add(seedEntry({ trigger: 'schema' }));
