@@ -82,6 +82,7 @@ async function runFrom(
   startIndex: number,
   phases: PhaseRecord[],
   handoff: Record<string, unknown>,
+  warnings: string[],
   config: RoundConfig,
   deps: EngineDeps,
 ): Promise<RunResult> {
@@ -107,7 +108,7 @@ async function runFrom(
     if (result.status === 'ESCALATE' && result.escalation) {
       if (!deps.onEscalate) {
         phases.push(toPhase(result, model));
-        return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, CAVEAT };
+        return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, warnings, CAVEAT };
       }
       const resolution = await deps.onEscalate(result.escalation);
       const resumedPrompt = `${prompt}\n\nOPERATOR RESOLUTION: ${resolution.answer}`;
@@ -115,22 +116,23 @@ async function runFrom(
       if (result.status === 'ESCALATE') {
         // Escalated again after resolution — do not loop; surface as paused.
         phases.push(toPhase(result, model));
-        return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, CAVEAT };
+        return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, warnings, CAVEAT };
       }
     }
 
     phases.push(toPhase(result, model));
 
     if (result.status === 'BLOCKED') {
-      return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, CAVEAT };
+      return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
     }
 
-    // Phase-3 discipline gates: a failing gate halts before forwarding.
+    // Discipline gates. Findings always surface (as warnings); a non-pass halts the run.
     if (deps.gates) {
       const outcome = await deps.gates(result, config);
+      if (outcome.findings) warnings.push(...outcome.findings.map((f) => `${role}: ${f}`));
       if (!outcome.pass) {
         if (deps.memorial) await deps.memorial.record('violation', { role, findings: outcome.findings });
-        return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, CAVEAT };
+        return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
       }
       if (deps.memorial) await deps.memorial.record('confirmation', { role });
     }
@@ -138,7 +140,7 @@ async function runFrom(
     handoff[role] = result.handoff;
   }
 
-  return { roundId: config.roundId, tier: config.tier, status: 'COMPLETE', phases, CAVEAT };
+  return { roundId: config.roundId, tier: config.tier, status: 'COMPLETE', phases, warnings, CAVEAT };
 }
 
 function toPhase(result: RoleResult, model: string): PhaseRecord {
@@ -147,7 +149,7 @@ function toPhase(result: RoleResult, model: string): PhaseRecord {
 
 // Run a round from the start.
 export function runRound(config: RoundConfig, deps: EngineDeps): Promise<RunResult> {
-  return runFrom(rolesForTier(config.tier), 0, [], {}, config, deps);
+  return runFrom(rolesForTier(config.tier), 0, [], {}, [], config, deps);
 }
 
 // Resume a PAUSED run after an operator resolves the escalation (mirrors `--start-at`).
@@ -166,5 +168,5 @@ export function resumeRound(paused: RunResult, resolution: Resolution, deps: Eng
   const config: RoundConfig = { roundId: paused.roundId, tier: paused.tier, task: '(resumed)', runDate: '(resumed)' };
   // Inject the resolution by wrapping onEscalate to answer immediately on the first ask.
   const onceResolved: EngineDeps = { ...deps, onEscalate: async () => resolution };
-  return runFrom(roles, resumeIndex, priorPhases, handoff, config, onceResolved);
+  return runFrom(roles, resumeIndex, priorPhases, handoff, paused.warnings ?? [], config, onceResolved);
 }

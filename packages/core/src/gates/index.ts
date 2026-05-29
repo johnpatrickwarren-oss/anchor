@@ -55,18 +55,22 @@ export function citationGate(resolve: CitationResolver, specTextFor: (r: RoleRes
 }
 
 // Engine-hook factory: the Architect's spec must carry a pre-emit grilling pass (structural).
-export function grillingGate(specTextFor: (r: RoleResult) => string | null = readSpecArtifact): EngineGate {
+// blocking=true (default) halts the run on failure; blocking=false surfaces findings as
+// non-blocking warnings (the recommended default in `anchor run`, since this gate is heuristic).
+export function grillingGate(specTextFor: (r: RoleResult) => string | null = readSpecArtifact, blocking = true): EngineGate {
   return (result: RoleResult) => {
     if (result.role !== 'architect') return { pass: true, findings: [] };
     const text = specTextFor(result);
     if (text === null) return { pass: true, findings: [] };
-    return toGateOutcome(checkGrillingEmitted(text));
+    const o = toGateOutcome(checkGrillingEmitted(text));
+    return blocking ? o : { pass: true, findings: o.findings };
   };
 }
 
 // Engine-hook factory: the Architect's spec must carry an anti-scope section (structural),
 // and (optionally) no written file may fall inside a declared anti-scope pattern.
-export function antiScopeGate(opts: { specTextFor?: (r: RoleResult) => string | null; patternsFor?: (r: RoleResult) => string[] } = {}): EngineGate {
+// blocking=false surfaces findings as warnings instead of halting.
+export function antiScopeGate(opts: { specTextFor?: (r: RoleResult) => string | null; patternsFor?: (r: RoleResult) => string[]; blocking?: boolean } = {}): EngineGate {
   const specTextFor = opts.specTextFor ?? readSpecArtifact;
   return (result: RoleResult) => {
     const findings: string[] = [];
@@ -78,7 +82,7 @@ export function antiScopeGate(opts: { specTextFor?: (r: RoleResult) => string | 
       const o = toGateOutcome(checkAntiScopeViolation(opts.patternsFor(result), result.artifacts));
       if (o.findings) findings.push(...o.findings);
     }
-    return { pass: findings.length === 0, findings };
+    return { pass: opts.blocking === false ? true : findings.length === 0, findings };
   };
 }
 

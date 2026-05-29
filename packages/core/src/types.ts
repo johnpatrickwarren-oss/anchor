@@ -78,6 +78,9 @@ export interface RunResult {
   phases: PhaseRecord[];
   pausedAt?: Role; // set when status === 'PAUSED' (an unresolved escalation)
   escalation?: Escalation;
+  // Advisory (non-blocking) gate findings, accumulated across roles. Blocking findings
+  // halt the run (status BLOCKED) instead of landing here.
+  warnings: string[];
   // Per-role usage breakdown only — no bare "cost"/"tokens" total (POC AC-7 / instrumented-caveat).
   CAVEAT: string;
 }

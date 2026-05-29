@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import {
   runRound, runRoundFromDirective, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
+  composeGates, grillingGate, antiScopeGate,
 } from '@anchor/core';
 import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult } from '@anchor/core';
 import { AgentSdkAdapter } from '@anchor/runtime-agent-sdk';
@@ -43,7 +44,8 @@ export function renderRoute(r: RouteResult): string {
 
 export function renderRun(r: RunResult): string {
   const rows = r.phases.map((p) => `  ${p.role.padEnd(12)} ${p.model.padEnd(28)} ${p.status.padEnd(9)} out=${p.usage.output} cache_rd=${p.usage.cache_read}`).join('\n');
-  return `round ${r.roundId} [${r.tier}] -> ${r.status}\n${rows}\n${r.CAVEAT}`;
+  const warn = r.warnings.length ? `\nwarnings (advisory; --strict to block):\n${r.warnings.map((w) => `  ⚠ ${w}`).join('\n')}` : '';
+  return `round ${r.roundId} [${r.tier}] -> ${r.status}\n${rows}${warn}\n${r.CAVEAT}`;
 }
 
 // ── anchor route ──
@@ -65,7 +67,11 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   const adapter = ctx.makeAdapter(flags);
   const memorialPath = str(flags, 'memorial');
   const memorial = memorialPath !== undefined ? new MemorialStore(ctx.makePersistence(memorialPath)) : undefined;
-  const deps = { adapter, memorial };
+  // Structural gates (grilling + anti-scope) are ON by default as ADVISORY warnings;
+  // --strict promotes them to blocking; --no-gates disables them.
+  const strict = bool(flags, 'strict');
+  const gates = bool(flags, 'no-gates') ? undefined : composeGates(grillingGate(undefined, strict), antiScopeGate({ blocking: strict }));
+  const deps = { adapter, memorial, gates };
   const roundId = str(flags, 'round') ?? 'R01';
   const directiveFile = str(flags, 'directive');
 

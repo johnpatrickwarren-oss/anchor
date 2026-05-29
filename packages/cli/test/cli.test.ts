@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { MockRuntimeAdapter, MemoryPersistence } from '@anchor/core';
 import type { MemorialEntry } from '@anchor/core';
 import { parseArgs } from '../src/args.ts';
@@ -79,6 +82,36 @@ test('memorial list / ratios / prune', async () => {
   const pruned = await cmdMemorial('prune', {}, ctx);
   assert.deepEqual((pruned.data as { retired: string[] }).retired, ['firing-attribution']); // 25 C / 0 V -> retired
   assert.match(out.join('\n'), /retired: firing-attribution/);
+});
+
+test('run: structural gates default-ON as advisory; --strict promotes them to blocking', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-cli-'));
+  const specPath = join(dir, 'q-spec.md');
+  writeFileSync(specPath, '# Spec for demo\nBody with no self-review buckets and no excluded-items list.\n'); // omits both disciplines (and avoids trigger words)
+  const out: string[] = [];
+  const ctx: CliContext = {
+    cwd: dir,
+    now: () => '2026-05-29',
+    stdout: (s) => out.push(s),
+    makeAdapter: () => new MockRuntimeAdapter({ handler: (spec) => (spec.role === 'architect' ? { artifacts: [specPath] } : {}) }),
+    makePersistence: () => new MemoryPersistence(),
+  };
+
+  // default: advisory — run completes but the omissions surface as warnings
+  const adv = await cmdRun({ tier: 'full', task: 'demo' }, ctx);
+  assert.equal(adv.result!.status, 'COMPLETE');
+  assert.ok(adv.result!.warnings.some((w) => /grilling/i.test(w)));
+  assert.ok(adv.result!.warnings.some((w) => /anti-?scope/i.test(w)));
+
+  // --strict: the same omissions now block the run
+  const strict = await cmdRun({ tier: 'full', task: 'demo', strict: true }, ctx);
+  assert.equal(strict.code, 1);
+  assert.equal(strict.result!.status, 'BLOCKED');
+
+  // --no-gates: omissions neither warn nor block
+  const off = await cmdRun({ tier: 'full', task: 'demo', 'no-gates': true }, ctx);
+  assert.equal(off.result!.status, 'COMPLETE');
+  assert.equal(off.result!.warnings.length, 0);
 });
 
 test('memorial unknown subcommand errors', async () => {
