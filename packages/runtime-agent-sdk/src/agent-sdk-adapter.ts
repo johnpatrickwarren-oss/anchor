@@ -1,0 +1,120 @@
+// @anchor/runtime-agent-sdk — RuntimeAdapter backed by the Claude Agent SDK.
+//
+// This is the first REAL adapter (the others shipped only a mock). It runs one Anchor role
+// as an Agent SDK `query()` — an agentic loop with file/bash tools — and maps the result
+// back to @anchor/core's RoleResult, including honest per-category token usage.
+//
+// Design: `query` is dependency-INJECTED, so the full adapter is unit-tested with a fake
+// stream (no SDK install, no API key). On the live path it dynamically imports the real
+// `@anthropic-ai/claude-agent-sdk`. See README for the (operator-run) live verification.
+
+import type { RuntimeAdapter, RoleSpec, RoleResult, Role, Usage, RoleStatus, Escalation } from '../../core/src/index.ts';
+import type { QueryFn, SdkQueryOptions, SdkMessage, SdkUsage, SdkAssistantMessage, SdkResultMessage } from './sdk-types.ts';
+
+export interface AgentSdkAdapterOptions {
+  queryFn?: QueryFn; // inject for tests; default = real SDK query (dynamic import)
+  cwd?: string;
+  permissionMode?: SdkQueryOptions['permissionMode']; // default 'acceptEdits' (autonomous role work)
+  maxTurns?: number;
+  systemPromptFor?: (role: Role) => string;
+}
+
+// ── Pure helpers (unit-tested) ───────────────────────────────────────────────
+
+export function mapUsage(u: SdkUsage | undefined): Usage {
+  return {
+    input: u?.input_tokens ?? 0,
+    cache_creation: u?.cache_creation_input_tokens ?? 0,
+    cache_read: u?.cache_read_input_tokens ?? 0,
+    output: u?.output_tokens ?? 0,
+  };
+}
+
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+
+// Collect file paths the agent wrote/edited, from tool_use blocks.
+export function extractArtifacts(messages: SdkMessage[]): string[] {
+  const paths = new Set<string>();
+  for (const m of messages) {
+    if (m.type !== 'assistant') continue;
+    const content = (m as SdkAssistantMessage).message?.content ?? [];
+    for (const block of content) {
+      if (block.type === 'tool_use' && WRITE_TOOLS.has((block as { name: string }).name)) {
+        const fp = (block as { input?: { file_path?: string } }).input?.file_path;
+        if (typeof fp === 'string') paths.add(fp);
+      }
+    }
+  }
+  return [...paths];
+}
+
+// Role status from the agent's final text, using Anchor's NEXT-ROLE signalling conventions.
+export function detectStatus(finalText: string, role: Role): { status: RoleStatus; escalation?: Escalation } {
+  if (/\bESCALATE\b/.test(finalText)) {
+    const q = finalText.match(/ESCALATE[:\-\s]+(.+)/)?.[1]?.trim() ?? 'operator decision required';
+    return { status: 'ESCALATE', escalation: { question: q.slice(0, 500), raisedBy: role } };
+  }
+  if (/\bHALT\b|\bDIAGNOSTIC\b|\bBLOCKED\b/.test(finalText)) return { status: 'BLOCKED' };
+  return { status: 'READY' };
+}
+
+export function lastAssistantText(messages: SdkMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.type !== 'assistant') continue;
+    const text = ((m as SdkAssistantMessage).message?.content ?? [])
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as { text: string }).text)
+      .join('\n');
+    if (text) return text;
+  }
+  return '';
+}
+
+export function buildQueryOptions(spec: RoleSpec, opts: AgentSdkAdapterOptions): SdkQueryOptions {
+  return {
+    systemPrompt: opts.systemPromptFor?.(spec.role) ?? `You are the ${spec.role.toUpperCase()} in an Anchor methodology cycle. Stay strictly within your role.`,
+    model: spec.model,
+    allowedTools: spec.tools,
+    cwd: opts.cwd,
+    permissionMode: opts.permissionMode ?? 'acceptEdits',
+    maxTurns: opts.maxTurns,
+  };
+}
+
+export function buildPrompt(spec: RoleSpec): string {
+  const refs = spec.contextRefs.length ? `\n\nContext files (read as needed): ${spec.contextRefs.join(', ')}` : '';
+  return `${spec.prompt}${refs}`;
+}
+
+// ── The adapter ──────────────────────────────────────────────────────────────
+
+export class AgentSdkAdapter implements RuntimeAdapter {
+  opts: AgentSdkAdapterOptions;
+  constructor(opts: AgentSdkAdapterOptions = {}) { this.opts = opts; }
+
+  async spawnRole(spec: RoleSpec): Promise<RoleResult> {
+    const query: QueryFn = this.opts.queryFn ?? (await import('@anthropic-ai/claude-agent-sdk' as string)).query;
+
+    const collected: SdkMessage[] = [];
+    let result: SdkResultMessage | undefined;
+    for await (const message of query({ prompt: buildPrompt(spec), options: buildQueryOptions(spec, this.opts) })) {
+      collected.push(message);
+      if (message.type === 'result') result = message as SdkResultMessage;
+    }
+
+    const finalText = lastAssistantText(collected);
+    const det = result && result.subtype !== 'success'
+      ? { status: 'BLOCKED' as RoleStatus }
+      : detectStatus(finalText, spec.role);
+
+    return {
+      role: spec.role,
+      status: det.status,
+      artifacts: extractArtifacts(collected),
+      handoff: { model: spec.model, cost_usd: result?.total_cost_usd ?? 0, summary: finalText.slice(0, 1000) },
+      usage: mapUsage(result?.usage),
+      escalation: det.escalation,
+    };
+  }
+}
