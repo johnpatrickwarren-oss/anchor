@@ -67,6 +67,17 @@ export interface RoundConfig {
   // Architect to write there and the discipline gates read it from here (instead of
   // guessing the filename from the role's artifacts).
   specPath?: string;
+  // Within-feature parallelism: independent implementation units. When present (set directly,
+  // or surfaced by the Architect in its handoff.units), the engine fans out one sub-implementer
+  // per unit CONCURRENTLY, then merges — decomposing a feature instead of one serial implementer.
+  units?: ImplUnit[];
+}
+
+// One independently-buildable slice of a feature. The Architect declares these (file-disjoint)
+// so the engine can implement them in parallel. `scope` describes the unit + which files it owns.
+export interface ImplUnit {
+  id: string;
+  scope: string;
 }
 
 export interface PhaseRecord {

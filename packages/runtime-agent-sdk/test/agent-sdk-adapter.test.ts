@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, parseMemorialSignals, buildQueryOptions, isMaxTurns, isTransient, resolveMaxTurns, DEFAULT_MAX_TURNS_BY_ROLE,
+  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, parseMemorialSignals, parseUnits, buildQueryOptions, isMaxTurns, isTransient, resolveMaxTurns, DEFAULT_MAX_TURNS_BY_ROLE,
 } from '../src/index.ts';
 import type { SdkMessage } from '../src/index.ts';
 
@@ -141,6 +141,20 @@ test('parseMemorialSignals reads CONFIRM/VIOLATE id lists; tolerant of brackets,
   });
   // No memorial lines → empty arrays (not undefined), so the engine path is a clean no-op.
   assert.deepEqual(parseMemorialSignals('ANCHOR-STATUS: READY'), { confirm: [], violate: [] });
+});
+
+test('parseUnits reads ANCHOR-UNIT lines into implementation units; tolerant of absence + dup ids', () => {
+  const text = [
+    'Spec written. ANCHOR-STATUS: READY',
+    'ANCHOR-UNIT [parser]: owns src/parse.ts + test/parse.test.ts',
+    'ANCHOR-UNIT [emitter]: owns src/emit.ts',
+    'ANCHOR-UNIT [parser]: a duplicate id — dropped',
+  ].join('\n');
+  assert.deepEqual(parseUnits(text), [
+    { id: 'parser', scope: 'owns src/parse.ts + test/parse.test.ts' },
+    { id: 'emitter', scope: 'owns src/emit.ts' },
+  ]);
+  assert.deepEqual(parseUnits('no units here'), []); // absence → [] (single-implementer path)
 });
 
 test('spawnRole surfaces memorialSignals parsed from the role output', async () => {
