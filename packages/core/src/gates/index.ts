@@ -117,10 +117,14 @@ export function antiSelfConfirmingGate(mutationsFor: (r: RoleResult) => Mutation
 // self-reported status. Blocking by design (a red suite is a hard fact, not a heuristic).
 export function testGate(opts: {
   run: () => boolean | Promise<boolean>;
-  roles?: Role[]; // roles after which to run the suite (default: implementer + reviewer)
+  roles?: Role[]; // roles after which to run the suite (default: implementer only)
   accrual?: { sink: MemorialAccrual; memorialId: string };
 }): EngineGate {
-  const roles = new Set<Role>(opts.roles ?? ['implementer', 'reviewer']);
+  // Default: the implementer ONLY. The reviewer/memorial don't mutate code, so re-running the
+  // (expensive, clean-rebuild) suite after them is pure redundancy — the implementer's
+  // remediation loop already guarantees green at the implementer. Pass roles explicitly to
+  // re-check after the reviewer (belt-and-suspenders) if desired.
+  const roles = new Set<Role>(opts.roles ?? ['implementer']);
   return async (result: RoleResult, config: RoundConfig): Promise<GateOutcome> => {
     if (!roles.has(result.role)) return { pass: true, findings: [] };
     const green = await opts.run();

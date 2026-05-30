@@ -41,6 +41,16 @@ function maxFixFrom(flags: Flags): number | undefined {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
+// --test-cmd "<command>": the command the green-test gate runs (whitespace-split argv).
+// Lets the operator point the gate at a FAST/incremental command (e.g. "npm run test:fast")
+// instead of the default `npm test` clean rebuild — the biggest gate-latency lever.
+function testCmdFrom(flags: Flags): string[] | undefined {
+  const v = str(flags, 'test-cmd');
+  if (!v) return undefined;
+  const parts = v.trim().split(/\s+/);
+  return parts.length ? parts : undefined;
+}
+
 export function defaultContext(): CliContext {
   return {
     cwd: process.cwd(),
@@ -109,7 +119,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   // Green-test gate: BLOCKS the round on a red suite (deterministic; not advisory). The one
   // check we don't leave to a model's self-reported status. --no-test-gate / --mock skip it.
   if (!bool(flags, 'no-test-gate') && !bool(flags, 'mock')) {
-    gateList.push(testGate({ run: npmTestRunner(str(flags, 'cwd') ?? ctx.cwd), accrual: memorial ? { sink: memorial, memorialId: 'tests-pass' } : undefined }));
+    gateList.push(testGate({ run: npmTestRunner(str(flags, 'cwd') ?? ctx.cwd, testCmdFrom(flags)), accrual: memorial ? { sink: memorial, memorialId: 'tests-pass' } : undefined }));
   }
   const gates = bool(flags, 'no-gates') ? undefined : composeGates(...gateList);
   const roundId = str(flags, 'round') ?? 'R01';
@@ -257,7 +267,7 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
     ];
     // Green-test gate per item: a red suite blocks that item (→ wave PARTIAL), so a buggy
     // feature can't come back COMPLETE. Runs in the item's own cwd/worktree.
-    if (testGateOn && cwd) gateList.push(testGate({ run: npmTestRunner(cwd), accrual: memorial ? { sink: memorial, memorialId: 'tests-pass' } : undefined }));
+    if (testGateOn && cwd) gateList.push(testGate({ run: npmTestRunner(cwd, testCmdFrom(flags)), accrual: memorial ? { sink: memorial, memorialId: 'tests-pass' } : undefined }));
     return {
       adapter: ctx.makeAdapter({ ...flags, cwd }),
       gates: noGates ? undefined : composeGates(...gateList),
