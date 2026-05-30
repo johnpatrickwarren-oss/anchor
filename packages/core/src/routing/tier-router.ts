@@ -48,12 +48,27 @@ export function classifyTier(directive: string): TierClassification {
     return { tier: 'implementer-only', confidence: 0.80, matched: 'mechanical/doc/cosmetic' };
   }
 
-  // Rule 4 — audit (0.75)
+  // Rule 4 — audit (0.75): methodology/consolidation passes.
   if (has(d, /\bmethodology\b/) || has(d, /REINFORCEMENT consolidation/) || has(d, /\bMR-\d+ Pass\b/) ||
       has(d, /re-accretion guard/) || has(d, /--tier audit\b/) || has(d, /audit-tier/)) {
     return { tier: 'audit', confidence: 0.75, matched: 'audit marker' };
   }
 
-  // Rule 5 — default (0.50): heuristic-mode escape hatch -> full.
+  // Rule 5 — audit (0.70): a SELF-CONTAINED ADDITIVE change (new module / additive / pure+
+  // deterministic / read-only) with no high-stakes markers needs review but NOT a separate
+  // cold-eye architect — the Implementer self-specs from the directive, the Reviewer + green-
+  // test gate backstop it. This is "the scope decides it doesn't need the architect": it drops
+  // the biggest wall-driver (the architect ~37%) for work that doesn't warrant a separate spec.
+  const additive =
+    (has(d, /\badditive\b/) && 'additive') ||
+    (has(d, /\bnew module\b/) && 'new module') ||
+    (has(d, /\bself-contained\b/) && 'self-contained') ||
+    (has(d, /\bread-only\b/) && 'read-only') ||
+    (has(d, /\bpure\b/) && has(d, /\bdeterministic\b/) && 'pure+deterministic');
+  if (additive && !has(d, /\bESCALATE\b/) && !has(d, /\bengine\//) && !has(d, /architectural/)) {
+    return { tier: 'audit', confidence: 0.70, matched: `${additive} -> audit (no separate architect)` };
+  }
+
+  // Rule 6 — default (0.50): heuristic-mode escape hatch -> full.
   return { tier: 'full', confidence: 0.50, matched: 'default (no rule matched)' };
 }
