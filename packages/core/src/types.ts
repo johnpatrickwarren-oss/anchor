@@ -86,6 +86,10 @@ export interface PhaseRecord {
   status: RoleStatus;
   usage: Usage;
   artifacts: string[];
+  // Wall-clock ms the role's model work took (incl. any escalation re-run); each remediation
+  // attempt is its own phase with its own duration. The seam for measuring where a round's
+  // wall-clock goes (velocity), separate from per-role token cost. Undefined when untimed.
+  durationMs?: number;
 }
 
 export type RunStatus = 'COMPLETE' | 'PAUSED' | 'BLOCKED';
