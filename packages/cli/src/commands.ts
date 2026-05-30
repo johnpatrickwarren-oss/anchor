@@ -143,7 +143,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   let result: RunResult;
   if (directiveFile || (str(flags, 'task') && !str(flags, 'tier'))) {
     const directive = readDirective(flags)!;
-    result = await runRoundFromDirective(directive, deps, { roundId, runDate: ctx.now(), task: str(flags, 'task'), tierOverride: str(flags, 'tier') as Tier | undefined, specPath });
+    result = await runRoundFromDirective(directive, deps, { roundId, runDate: ctx.now(), task: str(flags, 'task'), tierOverride: str(flags, 'tier') as Tier | undefined, specPath, riskAdapt: !bool(flags, 'no-risk-adapt') });
   } else {
     const tier = (str(flags, 'tier') as Tier) || 'audit';
     const task = str(flags, 'task');

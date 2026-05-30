@@ -18,6 +18,8 @@ Gates: structural (grilling/anti-scope) are advisory by default (--strict to blo
   runs the suite after the implementer/reviewer and BLOCKS the round on red (no COMPLETE over failing tests); --no-test-gate to skip.
   Remediation: on a failing gate the implementer re-runs with the findings as feedback and re-checks, up to --max-fix <n> times
   (default 2; 0 disables) — the cycle converges to green instead of stopping at the first red.
+Adaptive structure: a high-risk directive (engine/ / architectural-decision / new pattern) earns a second independent
+  reviewer pass — defense in depth for load-bearing changes; routine work is untouched. --no-risk-adapt to disable.
 Memorial: --memorial <path> injects + accrues disciplines; auto-pruned each run (--no-prune to skip).
   Injection is self-limiting: the most task-relevant rules inject (+ any live ones), capped at --max-rules (default 12; 0 = all).
 --mock runs offline (no model/tokens). Real runs need ANTHROPIC_API_KEY + @anthropic-ai/claude-agent-sdk.`;

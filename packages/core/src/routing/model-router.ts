@@ -11,6 +11,14 @@ const MU_MARKERS = [/cross-project promotion/i, /promote to cross-project/i, /Ru
 
 const hit = (s: string, res: RegExp[]) => res.some((re) => re.test(s));
 
+// Risk level of a directive — reuses the same HIGH_STAKES signal that drives model routing,
+// so "spend opus on it" and "verify it twice" stay in lockstep. Drives adaptive structure
+// (a second reviewer pass for load-bearing changes); 'normal' leaves the cycle untouched.
+export type RiskLevel = 'high' | 'normal';
+export function selectRiskLevel(directive: string): RiskLevel {
+  return hit(directive, HIGH_STAKES) ? 'high' : 'normal';
+}
+
 // Implementer (R75): engine/architectural -> reasoning; mechanical on implementer-only -> cheap; else balanced.
 export function selectImplementerClass(directive: string, tier: Tier): ModelClass {
   if (hit(directive, HIGH_STAKES)) return 'reasoning';

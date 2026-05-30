@@ -51,6 +51,9 @@ export interface EngineDeps {
   // on the first red — the original behavior). Default 2. This is the fix-and-reverify loop
   // that lets the cycle CONVERGE to green instead of stopping at the first failure.
   maxFixAttempts?: number;
+  // Explicit role sequence, overriding the tier's default set. The seam for adaptive structure
+  // (e.g. a risk-augmented cycle with a second reviewer pass). Roles may repeat.
+  rolesOverride?: Role[];
 }
 
 const CAVEAT =
@@ -197,9 +200,10 @@ function toPhase(result: RoleResult, model: string): PhaseRecord {
   return { role: result.role, model, status: result.status, usage: result.usage, artifacts: result.artifacts };
 }
 
-// Run a round from the start.
+// Run a round from the start. deps.rolesOverride wins over the tier's default role set
+// (the seam for adaptive structure — e.g. a risk-augmented cycle).
 export function runRound(config: RoundConfig, deps: EngineDeps): Promise<RunResult> {
-  return runFrom(rolesForTier(config.tier), 0, [], {}, [], config, deps);
+  return runFrom(deps.rolesOverride ?? rolesForTier(config.tier), 0, [], {}, [], config, deps);
 }
 
 // Resume a PAUSED run after an operator resolves the escalation (mirrors `--start-at`).
