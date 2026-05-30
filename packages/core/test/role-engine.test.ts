@@ -17,9 +17,18 @@ test('every role prompt carries the global engine-owns-verification note (no rol
   const adapter = new MockRuntimeAdapter({ handler: (spec) => { prompts[spec.role] = spec.prompt; return {}; } });
   await runRound(cfg('full'), { adapter });
   for (const role of ['architect', 'implementer', 'reviewer', 'memorial']) {
-    assert.match(prompts[role], /VERIFICATION \(all roles\)/, `${role} missing the global note`);
-    assert.match(prompts[role], /the engine runs the test suite/i);
+    assert.match(prompts[role], /VERIFICATION & DISCIPLINES \(all roles\)/, `${role} missing the global note`);
+    assert.match(prompts[role], /escalate to ask whether a discipline/i); // discipline-general, not just tests
   }
+});
+
+test('reinforcements inject into producing roles but NOT the memorial (it records, not produces)', async () => {
+  const prompts: Record<string, string> = {};
+  const adapter = new MockRuntimeAdapter({ handler: (spec) => { prompts[spec.role] = spec.prompt; return {}; } });
+  const memorial = { applicable: async () => ['[anti-scope] every spec must carry an anti-scope section'], record: async () => {} };
+  await runRound(cfg('full'), { adapter, memorial });
+  assert.match(prompts.implementer, /REINFORCEMENTS/);          // producing role gets reminded
+  assert.doesNotMatch(prompts.memorial, /REINFORCEMENTS/);      // recorder does not (no discipline to escalate over)
 });
 
 test('audit tier drops the Architect', async () => {
