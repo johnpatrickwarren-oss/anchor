@@ -114,7 +114,10 @@ export const DEFAULT_MAX_TURNS_BY_ROLE: Record<Role, number> = {
   architect: 40,
   implementer: 80,
   reviewer: 50,
-  memorial: 20,
+  // 20 was too tight in a live wave — a memorial that re-read the full round to accrete one
+  // entry exhausted it and paused a round whose code + review were already done. 35 gives
+  // headroom while staying well under the code-producing roles.
+  memorial: 35,
   coordinator: 30,
 };
 
