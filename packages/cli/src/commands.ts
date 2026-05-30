@@ -32,6 +32,15 @@ function injectCapFrom(flags: Flags): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+// --max-fix <n>: extra remediation attempts for a code-producing role whose gates fail
+// (re-run with the findings, re-check). Undefined → engine default (2); 0 disables.
+function maxFixFrom(flags: Flags): number | undefined {
+  const v = str(flags, 'max-fix');
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 export function defaultContext(): CliContext {
   return {
     cwd: process.cwd(),
@@ -108,6 +117,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
     adapter, memorial, gates,
     // The built-in gates accrue these; reviewer-signal accrual skips them (no double-count).
     gateOwnedMemorialIds: memorial && !bool(flags, 'no-gates') ? ['pre-emit-grilling', 'anti-scope', 'tests-pass'] : undefined,
+    maxFixAttempts: maxFixFrom(flags),
   };
   const statePath = str(flags, 'state') ?? join(ctx.cwd, '.anchor', `round-${roundId}.json`);
 
@@ -253,6 +263,7 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
       gates: noGates ? undefined : composeGates(...gateList),
       memorial,
       gateOwnedMemorialIds: memorial && !noGates ? ['pre-emit-grilling', 'anti-scope', 'tests-pass'] : undefined,
+      maxFixAttempts: maxFixFrom(flags),
     };
   };
 

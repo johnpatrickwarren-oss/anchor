@@ -46,11 +46,22 @@ export interface EngineDeps {
   // Disciplines a structural gate already accrues (e.g. the built-in grilling/anti-scope
   // gates). Reviewer-signal accrual SKIPS these to avoid gate+signal double-counting.
   gateOwnedMemorialIds?: string[];
+  // Remediation loop: when a code-producing role's gates fail, re-run it with the findings as
+  // feedback and re-check, up to this many extra attempts, before BLOCKING. 0 disables (block
+  // on the first red — the original behavior). Default 2. This is the fix-and-reverify loop
+  // that lets the cycle CONVERGE to green instead of stopping at the first failure.
+  maxFixAttempts?: number;
 }
 
 const CAVEAT =
   'phases[].usage is the per-role raw token breakdown (input/cache_creation/cache_read/output). ' +
   'No bare total cost is published; reconstruct cost from these + a pricing table (POC AC-7).';
+
+// Roles whose gate failures are auto-remediable: the engine re-runs them with the gate
+// findings as feedback and re-checks, instead of blocking on the first red. The implementer
+// is the code-fixing role; the architect/reviewer/memorial don't mutate code, so a gate
+// failure there is structural (block, don't retry).
+const REMEDIABLE = new Set<Role>(['implementer']);
 
 // Role obligations — the disciplines baked into each role's instruction so the agent
 // applies them (grilling gate / anti-scope gate / anti-self-confirming gate then verify).
@@ -133,9 +144,24 @@ async function runFrom(
       return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
     }
 
-    // Discipline gates. Findings always surface (as warnings); a non-pass halts the run.
+    // Discipline gates. Findings always surface (as warnings); a non-pass halts the run —
+    // UNLESS the role is auto-remediable, in which case it re-runs with the findings as
+    // feedback and re-checks, up to maxFixAttempts, converging to green instead of stopping
+    // at the first red. This is the fix-and-reverify loop the dynamic-workflow comparison
+    // exposed: the workflow iterated to green; Anchor used to stop at the first failure.
     if (deps.gates) {
-      const outcome = await deps.gates(result, config);
+      let outcome = await deps.gates(result, config);
+      const maxFix = deps.maxFixAttempts ?? 2;
+      let fixAttempt = 0;
+      while (!outcome.pass && REMEDIABLE.has(role) && result.status === 'READY' && fixAttempt < maxFix) {
+        fixAttempt++;
+        const findings = outcome.findings ?? [];
+        const fixPrompt = `${prompt}\n\nREMEDIATION (attempt ${fixAttempt}/${maxFix}) — these gate checks FAILED and MUST be fixed before the round can complete:\n- ${findings.join('\n- ')}\nFix them without regressing passing work, then re-verify.`;
+        result = await deps.adapter.spawnRole({ ...spec, prompt: fixPrompt });
+        phases.push(toPhase(result, model));
+        if (result.status !== 'READY') break; // a fix that escalates/blocks falls through to the block below
+        outcome = await deps.gates(result, config);
+      }
       if (outcome.findings) warnings.push(...outcome.findings.map((f) => `${role}: ${f}`));
       if (!outcome.pass) {
         if (deps.memorial) await deps.memorial.record('violation', { role, findings: outcome.findings });
