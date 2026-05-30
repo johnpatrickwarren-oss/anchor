@@ -41,16 +41,20 @@ export interface RouteResult {
 export interface RouteOptions {
   manifest?: ModelManifest;
   tierOverride?: Tier; // operator pin (e.g. --tier); wins over classification
+  // Model-drift fail-safe: an ungrounded model is in play, so over-provision until the oracle
+  // re-confirms cheaper configs — force full tier (unless the operator pinned one) and route
+  // every role to the reasoning (opus) class. Safe by the asymmetry (never under-scales).
+  safe?: boolean;
 }
 
 export function routeRound(directive: string, opts: RouteOptions = {}): RouteResult {
   const classification = classifyTier(directive);
-  const tier = opts.tierOverride ?? classification.tier;
+  const tier = opts.tierOverride ?? (opts.safe ? 'full' : classification.tier);
   const manifest = opts.manifest ?? DEFAULT_MANIFEST;
   const classes = selectRoleModelClasses(directive, tier);
   const modelOverrides: Partial<Record<Role, string>> = {};
   for (const [role, cls] of Object.entries(classes)) {
-    if (cls) modelOverrides[role as Role] = manifest.classes[cls];
+    if (cls) modelOverrides[role as Role] = manifest.classes[opts.safe ? 'reasoning' : cls];
   }
   return { tier, classification, modelOverrides };
 }
@@ -62,13 +66,14 @@ export interface DirectiveRunMeta {
   tierOverride?: Tier;
   specPath?: string; // canonical spec path (threaded to the Architect + gates)
   riskAdapt?: boolean; // adaptive structure (2nd reviewer for high-risk); default ON
+  safe?: boolean; // model-drift fail-safe: over-provision (full tier + reasoning models)
 }
 
 // Self-routed run: classify the directive, derive per-role models + risk-adapted role set,
 // then run. Explicit deps.modelOverrides / deps.rolesOverride still win over routing-derived
 // values.
 export function runRoundFromDirective(directive: string, deps: EngineDeps, meta: DirectiveRunMeta) {
-  const route = routeRound(directive, { manifest: deps.manifest, tierOverride: meta.tierOverride });
+  const route = routeRound(directive, { manifest: deps.manifest, tierOverride: meta.tierOverride, safe: meta.safe });
   const config: RoundConfig = { roundId: meta.roundId, tier: route.tier, task: meta.task ?? directive, runDate: meta.runDate, specPath: meta.specPath };
   const modelOverrides = { ...route.modelOverrides, ...(deps.modelOverrides ?? {}) };
   const rolesOverride = deps.rolesOverride

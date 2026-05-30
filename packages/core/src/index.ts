@@ -27,3 +27,5 @@ export type { MemorialEntry, MemorialStatus, MemorialPersistence, RatioRow, Memo
 // Routing — derive tier + per-role models from a directive (self-routing).
 export { classifyTier, routeRound, runRoundFromDirective, selectImplementerClass, selectMemorialClass, selectReviewerClass, selectArchitectClass, selectRoleModelClasses, selectRiskLevel, adaptRolesForRisk } from './routing/index.ts';
 export type { TierClassification, RouteResult, RouteOptions, DirectiveRunMeta, RiskLevel } from './routing/index.ts';
+export { ROUTING_PROVENANCE, checkModelDrift } from './routing/provenance.ts';
+export type { RoutingProvenance, DriftResult } from './routing/provenance.ts';
