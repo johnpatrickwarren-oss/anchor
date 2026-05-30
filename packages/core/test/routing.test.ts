@@ -76,6 +76,7 @@ test('runRoundFromDirective self-routes tier and per-role model', async () => {
     { roundId: 'R20', runDate: '2026-05-29' },
   );
   assert.equal(r.tier, 'full'); // classified from 'engine/' + architectural-decision
-  assert.deepEqual(r.phases.map((p) => p.role), ['architect', 'implementer', 'reviewer', 'memorial']);
+  // High-risk (engine/ + architectural-decision) → adaptive structure adds a 2nd reviewer pass.
+  assert.deepEqual(r.phases.map((p) => p.role), ['architect', 'implementer', 'reviewer', 'reviewer', 'memorial']);
   assert.equal(implModel, 'claude-opus-4-8'); // implementer upgraded to reasoning for engine work
 });
