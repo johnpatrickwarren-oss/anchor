@@ -1,6 +1,6 @@
 # @anchor/core
 
-The first step of turning Anchor from a methodology pack into a tool: the **role engine** and the **runtime-adapter seam**. Plain TypeScript, no build step — runs under Node's type-stripping (`node --test`).
+The first step of turning Anchor from a methodology pack into a tool: the **role engine** and the **runtime-adapter seam**. Plain TypeScript, build-free in dev — runs under Node's type-stripping (`node --test`). A `tsc` build (`pnpm build`) compiles `src/` → `dist/` (JS + `.d.ts`) only for npm publish, since Node refuses to type-strip files under `node_modules`.
 
 ## Why this exists
 

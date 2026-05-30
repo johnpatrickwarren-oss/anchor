@@ -1,0 +1,16 @@
+{
+  "//": "Shared compiler options for the PUBLISH build only. Dev/test still run raw .ts via Node's type-stripping (no build). tsc here transpiles src/ → dist/ as .js + .d.ts, rewriting relative `.ts` import specifiers to `.js` so the published artifact runs from node_modules (where type-stripping is unsupported).",
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmitOnError": false
+  }
+}

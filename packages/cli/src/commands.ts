@@ -422,7 +422,7 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
     // feature can't come back COMPLETE. Runs in the item's own cwd/worktree.
     if (testGateOn && cwd) gateList.push(testGate({ run: npmTestRunner(cwd, testCmdFrom(flags)), accrual: memorial ? { sink: memorial, memorialId: 'tests-pass' } : undefined }));
     return {
-      adapter: ctx.makeAdapter({ ...flags, cwd }),
+      adapter: ctx.makeAdapter(cwd ? { ...flags, cwd } : flags),
       gates: noGates ? undefined : composeGates(...gateList),
       memorial,
       gateOwnedMemorialIds: memorial && !noGates ? ['pre-emit-grilling', 'anti-scope', 'tests-pass'] : undefined,
