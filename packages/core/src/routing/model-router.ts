@@ -38,8 +38,9 @@ export function selectMemorialClass(directive: string, tier: Tier): ModelClass {
 // Sonnet for routine full-tier features. The downstream gates (citation/anti-scope) + the
 // risk-routed reviewer backstop a Sonnet spec on routine work.
 export function selectArchitectClass(directive: string, _tier: Tier): ModelClass {
-  if (hit(directive, HIGH_STAKES)) return 'reasoning';
-  return 'balanced';
+  if (hit(directive, HIGH_STAKES)) return 'reasoning';   // load-bearing -> opus
+  if (hit(directive, MECHANICAL)) return 'cheap';        // typo/doc-only/cosmetic spec -> haiku (faster)
+  return 'balanced';                                     // routine -> sonnet
 }
 
 // Reviewer (cost-aware): the reviewer is the most expensive role, so route its model by
