@@ -1,8 +1,9 @@
 // @anchor/cli — command handlers. Dependency-injected (adapter, persistence, clock, stdout)
 // so every command is unit-testable offline; cli.ts wires the real defaults.
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, dirname, isAbsolute } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { join, dirname, isAbsolute, basename, resolve } from 'node:path';
 import {
   runRound, runRoundFromDirective, resumeRound, runWave, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
   composeGates, grillingGate, antiScopeGate, testGate, npmTestRunner, seedBuiltinDisciplines,
@@ -116,6 +117,113 @@ export async function cmdRoute(flags: Flags, ctx: CliContext): Promise<{ code: n
   const route = routeRound(directive, { tierOverride: str(flags, 'tier') as Tier | undefined });
   ctx.stdout(renderRoute(route));
   return { code: 0, route };
+}
+
+// ── anchor init ──
+// Bootstrap an empty (or partial) directory into a greenfield project the green-test gate
+// can run against from round 1. The gate runs `npm test`; on a truly empty repo there is no
+// suite, so the gate would have nothing to gate on. init scaffolds a minimal package.json
+// (test → `node --test`) plus a PASSING smoke test, so `npm test` is green out of the box and
+// the Architect→Implementer cycle can layer real TDD tests on top. Idempotent and non-clobbering:
+// an existing file is left untouched unless --force. Optional `git init` (--no-git to skip).
+//
+// Files scaffolded (skipped if present):
+//   package.json            type:module + "test": "node --test"
+//   test/smoke.test.js       a passing placeholder so the gate is green from round 1
+//   coordination/PRD.md      the one artifact you author by hand; feed it via --directive
+//   src/.gitkeep             keep an empty source dir under version control
+//   .gitignore               node_modules/ + .anchor/
+//   README.md                project stub pointing at the anchor run command
+const PRD_TEMPLATE = (name: string) => `# PRD — ${name}
+
+> The one artifact you author by hand. Anchor's roles read this as the directive:
+>   anchor run --directive coordination/PRD.md
+> Keep the round's scope tight — the anti-scope gate flags creep.
+
+## Problem
+<what are we building, and why>
+
+## Scope (this round)
+<the smallest shippable slice>
+
+## Out of scope
+<explicitly excluded — prevents scope drift>
+
+## Acceptance
+<how we know it works — these become tests>
+`;
+const SMOKE_TEST = `// Greenfield smoke test scaffolded by \`anchor init\`.
+// It exists so \`npm test\` (Anchor's green-test gate) is green from round 1, before any real
+// code is written. Your first real round should add real tests (TDD red-green); delete this
+// once you have them.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+test('greenfield scaffold: the test runner is wired up', () => {
+  assert.ok(true);
+});
+`;
+const PKG_JSON = (name: string) => JSON.stringify({
+  name, version: '0.0.0', private: true, type: 'module',
+  scripts: { test: 'node --test' },
+}, null, 2) + '\n';
+const README_STUB = (name: string) => `# ${name}
+
+Greenfield project scaffolded by \`anchor init\`. Edit the PRD, then run a round:
+
+    anchor run --directive coordination/PRD.md
+
+\`npm test\` runs the suite Anchor's green-test gate gates on.
+`;
+
+export async function cmdInit(dir: string | undefined, flags: Flags, ctx: CliContext): Promise<{ code: number }> {
+  const arg = dir ?? str(flags, 'cwd') ?? '.';
+  const target = isAbsolute(arg) ? arg : resolve(ctx.cwd, arg);
+  const name = basename(target) || 'anchor-project';
+  const force = bool(flags, 'force');
+
+  const files: Array<[string, string]> = [
+    ['package.json', PKG_JSON(name)],
+    [join('test', 'smoke.test.js'), SMOKE_TEST],
+    [join('coordination', 'PRD.md'), PRD_TEMPLATE(name)],
+    [join('src', '.gitkeep'), ''],
+    ['.gitignore', 'node_modules/\n.anchor/\n'],
+    ['README.md', README_STUB(name)],
+  ];
+  const created: string[] = [];
+  const skipped: string[] = [];
+  try {
+    for (const [rel, content] of files) {
+      const abs = join(target, rel);
+      if (existsSync(abs) && !force) { skipped.push(rel); continue; }
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, content);
+      created.push(rel);
+    }
+  } catch (e) {
+    ctx.stdout(`error: could not scaffold into ${target}: ${(e as Error).message}`);
+    return { code: 1 };
+  }
+
+  let gitNote = '';
+  if (!bool(flags, 'no-git')) {
+    if (existsSync(join(target, '.git'))) gitNote = '\ngit: repo already present — left as-is.';
+    else {
+      try { execFileSync('git', ['init', '-q'], { cwd: target, stdio: 'ignore' }); gitNote = '\ngit: initialized an empty repository.'; }
+      catch (e) { gitNote = `\ngit: skipped (\`git init\` failed: ${(e as Error).message}) — re-run \`git init\` yourself, or pass --no-git.`; }
+    }
+  }
+
+  ctx.stdout(
+    `scaffolded greenfield project "${name}" → ${target}\n` +
+    `  created: ${created.join(', ') || '—'}\n` +
+    `  skipped (already present; --force to overwrite): ${skipped.join(', ') || '—'}` +
+    gitNote +
+    `\n\nnext:\n  1. write your PRD → ${join(target, 'coordination', 'PRD.md')}\n` +
+    `  2. run the first round → anchor run --directive coordination/PRD.md${target === ctx.cwd ? '' : ` --cwd ${target}`}\n` +
+    `  (the smoke test keeps \`npm test\` green until your first real tests land.)`,
+  );
+  return { code: 0 };
 }
 
 // ── anchor calibrate ──

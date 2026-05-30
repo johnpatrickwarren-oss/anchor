@@ -164,15 +164,18 @@ Anchor is primarily a *methodology*, but `packages/` contains a **tool** that op
 |---|---|
 | [`@anchor/core`](packages/core) | The role engine (Architect→Implementer→Reviewer→Memorial state machine) plus: a **green-test gate** (no COMPLETE over red — the engine runs the suite and gates on it) + a **remediation loop** (a red gate sends the failures back to the implementer until green); **within-feature parallelism** (the Architect declares file-disjoint units → concurrent sub-implementers); **adaptive structure** (high-risk work earns a 2nd cold-eye reviewer); scope-driven **tier auto-routing** + cost-aware **per-role model routing**; per-phase **wall-clock timing**; the discipline **gates** (citation, anti-self-confirming, pre-emit-grilling, anti-scope); the **memorial** learning loop; a **routing-accuracy** harness (corpus + live oracle + calibration); and **model-drift** detection with fail-safe over-provisioning. Dependency-free, plain TypeScript (no build step). |
 | [`@anchor/runtime-agent-sdk`](packages/runtime-agent-sdk) | A `RuntimeAdapter` that runs each role via the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/typescript); live-verified. |
-| [`@anchor/cli`](packages/cli) | `anchor run / wave / route / memorial / calibrate` — the operator surface. |
+| [`@anchor/cli`](packages/cli) | `anchor init / run / wave / route / memorial / calibrate` — the operator surface. |
 
 ```bash
-npm install                                                   # workspace install (brings the Agent SDK)
+pnpm install                                                  # workspace install (brings the Agent SDK)
+node packages/cli/src/cli.ts init my-project                  # scaffold a greenfield project the gate can run (npm test green from round 1)
 node packages/cli/src/cli.ts route --task "Modify engine/x.ts (architectural-decision)"   # dry-run: tier + per-role models
 node packages/cli/src/cli.ts run  --task "add a pure formatDuration helper; additive"     # self-routes: scope → tier → models
 node packages/cli/src/cli.ts wave --plan plan.json --memorial ~/.anchor/memorial.json     # fan out independent features in parallel
 node packages/cli/src/cli.ts calibrate                                                     # report model drift vs the grounded labels
 ```
+
+**Greenfield on-ramp.** The green-test gate runs `npm test` — but an *empty* repo has no suite for it to gate on, which is the mechanism behind the "from-empty greenfield is still unproven" caveat below. `anchor init` closes that mechanism: it scaffolds a `package.json` (`test` → `node --test`) and a **passing smoke test**, so the gate is green from round 1 and the first real round can layer TDD tests on top. (This makes the gate *runnable* from empty; an end-to-end from-empty greenfield build driven entirely by the tool is still the open proof point — see the status note below.)
 
 **Give it the scope, it decides the rest.** The tier-router picks the role set — *just the implementer* for mechanical work, *+ reviewer/memorial* (`audit`) for self-contained additive work, the *full cycle* for complex/risky work — per-role model routing picks opus/sonnet/haiku by change-risk, and the **green-test gate + remediation loop** enforce a passing suite (the implementer re-runs on red until green, deterministically, no "COMPLETE over failing tests"). Pass `--memorial` and the run accrues discipline V/C and reinforces those rules into future runs. On a new model release, `run`/`wave` detect the drift on startup and **fail safe** — over-provision (full tier + opus) until you deliberately re-ground with `calibrate` + the oracle grid. (Structural gates are advisory by default; `--strict` to block. Flags: `--max-fix`, `--test-cmd`, `--no-test-gate`, `--no-risk-adapt`, `--no-model-check`.)
 

@@ -2,11 +2,12 @@
 // @anchor/cli — entrypoint. Thin: parse argv, dispatch to a command handler, set exit code.
 
 import { parseArgs } from './args.ts';
-import { defaultContext, cmdRoute, cmdRun, cmdMemorial, cmdWave, cmdCalibrate } from './commands.ts';
+import { defaultContext, cmdRoute, cmdRun, cmdMemorial, cmdWave, cmdCalibrate, cmdInit } from './commands.ts';
 
 const HELP = `anchor — run Anchor's disciplined role cycle on a commodity runtime
 
 Usage:
+  anchor init    [<dir>] [--no-git] [--force]                            # scaffold an empty dir into a greenfield project the gate can run (npm test green from round 1)
   anchor run     [--directive <file> | --task "<text>" [--tier <t>]] [--cwd <dir>] [--round <id>] [--memorial <path>] [--maxTurns <n>] [--mock]
   anchor run     --resume [--state <path> | --round <id>] [--maxTurns <n>]  # continue a paused round (e.g. after a turn-budget pause)
   anchor wave    --plan <file> [--repo <dir> [--base <ref>]] [--concurrency <n>] [--memorial <path>]  # fan out independent cycles in parallel (--repo auto-creates a worktree+branch per item)
@@ -36,6 +37,7 @@ export async function main(argv: string[]): Promise<number> {
   const ctx = defaultContext();
   if (!cmd || flags.help) { ctx.stdout(HELP); return cmd ? 0 : 1; }
   switch (cmd) {
+    case 'init': return (await cmdInit(_[1], flags, ctx)).code;
     case 'run': return (await cmdRun(flags, ctx)).code;
     case 'wave': return (await cmdWave(flags, ctx)).code;
     case 'route': return (await cmdRoute(flags, ctx)).code;
