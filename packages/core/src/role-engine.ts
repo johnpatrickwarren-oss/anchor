@@ -54,6 +54,10 @@ export interface EngineDeps {
   // Explicit role sequence, overriding the tier's default set. The seam for adaptive structure
   // (e.g. a risk-augmented cycle with a second reviewer pass). Roles may repeat.
   rolesOverride?: Role[];
+  // Injectable wall-clock for per-phase timing (PhaseRecord.durationMs). Default Date.now;
+  // injected in tests for determinism. Timing is a measurement, not control flow — the
+  // engine's logical run date stays config.runDate (never self-generated).
+  now?: () => number;
 }
 
 const CAVEAT =
@@ -113,6 +117,7 @@ async function runFrom(
   const contextRefsFor = deps.contextRefsFor ?? defaultContextRefs;
   const manifest = deps.manifest;
   const overrides = deps.modelOverrides;
+  const clock = deps.now ?? Date.now;
   // Within-feature parallelism: implementation units, pre-set or declared by the Architect.
   let units = config.units;
 
@@ -129,6 +134,7 @@ async function runFrom(
     const spec: RoleSpec = { role, model, contextRefs: contextRefsFor(role, config, phases), prompt };
     // Fan out the implementer across independent units (≥2) — one sub-implementer per unit,
     // run concurrently, then merged. A single/no unit runs the normal serial implementer.
+    const t0 = clock();
     let result = (role === 'implementer' && units && units.length > 1)
       ? await fanOutImplementers(units, spec, prompt, deps.adapter)
       : await deps.adapter.spawnRole(spec);
@@ -136,7 +142,7 @@ async function runFrom(
     // Escalation: pause for the operator, then resume the SAME role once with the answer.
     if (result.status === 'ESCALATE' && result.escalation) {
       if (!deps.onEscalate) {
-        phases.push(toPhase(result, model));
+        phases.push(toPhase(result, model, clock() - t0));
         return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, warnings, CAVEAT };
       }
       const resolution = await deps.onEscalate(result.escalation);
@@ -144,12 +150,12 @@ async function runFrom(
       result = await deps.adapter.spawnRole({ ...spec, prompt: resumedPrompt });
       if (result.status === 'ESCALATE') {
         // Escalated again after resolution — do not loop; surface as paused.
-        phases.push(toPhase(result, model));
+        phases.push(toPhase(result, model, clock() - t0));
         return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, warnings, CAVEAT };
       }
     }
 
-    phases.push(toPhase(result, model));
+    phases.push(toPhase(result, model, clock() - t0));
 
     if (result.status === 'BLOCKED') {
       return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
@@ -168,8 +174,9 @@ async function runFrom(
         fixAttempt++;
         const findings = outcome.findings ?? [];
         const fixPrompt = `${prompt}\n\nREMEDIATION (attempt ${fixAttempt}/${maxFix}) — these gate checks FAILED and MUST be fixed before the round can complete:\n- ${findings.join('\n- ')}\nFix them without regressing passing work, then re-verify.`;
+        const fixT0 = clock();
         result = await deps.adapter.spawnRole({ ...spec, prompt: fixPrompt });
-        phases.push(toPhase(result, model));
+        phases.push(toPhase(result, model, clock() - fixT0));
         if (result.status !== 'READY') break; // a fix that escalates/blocks falls through to the block below
         outcome = await deps.gates(result, config);
       }
@@ -257,8 +264,8 @@ function mergeImplResults(parts: RoleResult[], units: ImplUnit[]): RoleResult {
   };
 }
 
-function toPhase(result: RoleResult, model: string): PhaseRecord {
-  return { role: result.role, model, status: result.status, usage: result.usage, artifacts: result.artifacts };
+function toPhase(result: RoleResult, model: string, durationMs?: number): PhaseRecord {
+  return { role: result.role, model, status: result.status, usage: result.usage, artifacts: result.artifacts, durationMs };
 }
 
 // Run a round from the start. deps.rolesOverride wins over the tier's default role set
