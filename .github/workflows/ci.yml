@@ -11,11 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4   # reads the pnpm version from packageManager in package.json
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       # Runs each workspace package's `node --test` suite (@anchor/core, runtime-agent-sdk, cli).
       # Packages are plain TypeScript executed via Node's type-stripping — no build step.
-      - run: npm test
+      - run: pnpm test

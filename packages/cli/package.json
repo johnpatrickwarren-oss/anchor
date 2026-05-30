@@ -8,8 +8,8 @@
   "engines": { "node": ">=24" },
   "bin": { "anchor": "./src/cli.ts" },
   "dependencies": {
-    "@anchor/core": "*",
-    "@anchor/runtime-agent-sdk": "*"
+    "@anchor/core": "workspace:*",
+    "@anchor/runtime-agent-sdk": "workspace:*"
   },
   "scripts": {
     "test": "node --test test/*.test.ts"
