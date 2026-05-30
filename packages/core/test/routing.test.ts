@@ -14,6 +14,15 @@ test('classifyTier — priority-ordered heuristic (first match wins)', () => {
   assert.equal(classifyTier('Add a sortable column to the users table').tier, 'full'); // default escape hatch
 });
 
+test('classifyTier — self-contained additive work scales DOWN to audit (no separate architect)', () => {
+  assert.equal(classifyTier('new module merge.ts; additive, no score.ts change').tier, 'audit');
+  assert.equal(classifyTier('pure + deterministic; additive helper').tier, 'audit');
+  assert.equal(classifyTier('read-only summary over existing ranked output').tier, 'audit');
+  // but the high-stakes guard wins: additive wording does NOT downgrade engine/architectural work
+  assert.equal(classifyTier('additive change to engine/score.ts').tier, 'full');
+  assert.equal(classifyTier('additive, but architectural-decision required').tier, 'full');
+});
+
 test('coordinator/full markers beat lower rules (order matters)', () => {
   // contains both a mechanical word and an engine path -> full wins (rule 2 before rule 3)
   assert.equal(classifyTier('mechanical cleanup in engine/util.ts').tier, 'full');
