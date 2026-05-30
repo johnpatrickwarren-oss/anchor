@@ -5,8 +5,15 @@
   "description": "Workspace root for the Anchor tool packages (@anchor/core, @anchor/runtime-agent-sdk).",
   "license": "Apache-2.0",
   "packageManager": "pnpm@11.1.2",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "test": "pnpm -r --if-present test"
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3"
   }
 }

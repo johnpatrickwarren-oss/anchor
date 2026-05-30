@@ -2,6 +2,17 @@
 
 The operator surface — runs Anchor's disciplined role cycle on a commodity runtime, ties together `@anchor/core` (engine + routing + gates + memorial) and `@anchor/runtime-agent-sdk` (the real adapter).
 
+## Install
+
+Once published to npm, no clone required — run it with any package manager's runner:
+
+```bash
+npx @anchor/cli init my-project        # npm
+pnpm dlx @anchor/cli init my-project   # pnpm — same package, same registry
+```
+
+The published package ships compiled JS (`dist/`), built from the raw-TypeScript source by a `tsc` step that runs only on `prepack`/publish (Node won't type-strip files under `node_modules`). Requires Node ≥24. In this repo, dev stays build-free — `pnpm test` runs the source directly.
+
 ```bash
 # start from an empty directory — scaffold a greenfield project the gate can run from round 1
 anchor init my-project && cd my-project
