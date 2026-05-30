@@ -78,9 +78,10 @@ const ROLE_OBLIGATIONS: Record<Role, string> = {
   implementer:
     "Implement exactly to the spec (cold-read; don't seek the Architect's reasoning). Every acceptance criterion gets a test, " +
     'and no test may be self-confirming (it must FAIL if the production line it checks is broken). ' +
-    'Run the full test suite and make it GREEN before signalling READY — a failing suite blocks the round. HALT with a DIAGNOSTIC if the spec contradicts reality.',
+    'Write the code and the tests, then signal READY — the ENGINE runs the suite and blocks the round on red, sending the failures back for you to fix. ' +
+    'Do NOT escalate to ask the operator to run the tests, and do not block on executing them yourself (your sandbox may forbid it); the deterministic gate owns verification. HALT with a DIAGNOSTIC only if the spec contradicts reality.',
   reviewer:
-    'Cold-eye spec-vs-implementation audit. RUN the test suite, then verify each acceptance criterion against the actual code. Apply the anti-self-confirming-test check. ' +
+    'Cold-eye spec-vs-implementation audit. Verify each acceptance criterion against the actual code — the engine runs the suite and gates on it, so judge against the code (and the gate result) rather than executing tests yourself or escalating to ask the operator to. Apply the anti-self-confirming-test check. ' +
     'BE TERSE — output ONLY: one line per acceptance criterion (`AC-n: pass|fail @ file:line`), then the material findings tiered by severity (CRITICAL / MAJOR / MINOR / NIT), then the status + memorial lines. Do NOT restate code, paste test output, or narrate your steps; cite file:line instead of reproducing. A clean review is a few lines, not paragraphs. ' +
     'For each REINFORCEMENT discipline you were given (tagged [id]), judge whether the implementation upheld or broke it and report it back by id via the ANCHOR-MEMORIAL-CONFIRM / ANCHOR-MEMORIAL-VIOLATE contract — this is how the memorial learns from review.',
   memorial: 'Append one discipline-accretion entry recording what this round confirms or violates.',
