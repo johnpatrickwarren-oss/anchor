@@ -70,7 +70,7 @@ test('run without --mock and no API key does NOT hard-block (SDK uses Claude Cod
   delete process.env.ANTHROPIC_API_KEY;
   try {
     const { ctx, out } = testCtx(); // injects a mock adapter, so the run completes
-    const r = await cmdRun({ tier: 'audit', task: 'demo' }, ctx);
+    const r = await cmdRun({ tier: 'audit', task: 'demo', 'no-test-gate': true }, ctx); // mock adapter; skip the real npm-test gate
     assert.equal(r.code, 0);
     assert.match(out.join('\n'), /no ANTHROPIC_API_KEY/);
   } finally {
@@ -105,19 +105,20 @@ test('run: structural gates default-ON as advisory; --strict promotes them to bl
     makePersistence: () => new MemoryPersistence(),
   };
 
-  // default: advisory — run completes but the omissions surface as warnings
-  const adv = await cmdRun({ tier: 'full', task: 'demo' }, ctx);
+  // default: advisory — run completes but the omissions surface as warnings.
+  // (--no-test-gate: this test uses a mock adapter, so skip the real npm-test gate.)
+  const adv = await cmdRun({ tier: 'full', task: 'demo', 'no-test-gate': true }, ctx);
   assert.equal(adv.result!.status, 'COMPLETE');
   assert.ok(adv.result!.warnings.some((w) => /grilling/i.test(w)));
   assert.ok(adv.result!.warnings.some((w) => /anti-?scope/i.test(w)));
 
   // --strict: the same omissions now block the run
-  const strict = await cmdRun({ tier: 'full', task: 'demo', strict: true }, ctx);
+  const strict = await cmdRun({ tier: 'full', task: 'demo', strict: true, 'no-test-gate': true }, ctx);
   assert.equal(strict.code, 1);
   assert.equal(strict.result!.status, 'BLOCKED');
 
   // --no-gates: omissions neither warn nor block
-  const off = await cmdRun({ tier: 'full', task: 'demo', 'no-gates': true }, ctx);
+  const off = await cmdRun({ tier: 'full', task: 'demo', 'no-gates': true, 'no-test-gate': true }, ctx);
   assert.equal(off.result!.status, 'COMPLETE');
   assert.equal(off.result!.warnings.length, 0);
 });
@@ -133,8 +134,8 @@ test('run --memorial seeds disciplines and accrues V/C (violation on missing, co
     makeAdapter: () => new MockRuntimeAdapter(),
     makePersistence: (p) => new JsonFilePersistence(p!), // real file so the run persists + we can re-read
   };
-  await cmdRun({ tier: 'full', task: 'demo', memorial: memPath, spec: badSpec }, ctx);   // missing grilling+anti-scope
-  await cmdRun({ tier: 'full', task: 'demo', memorial: memPath, spec: goodSpec }, ctx);  // both present
+  await cmdRun({ tier: 'full', task: 'demo', memorial: memPath, spec: badSpec, 'no-test-gate': true }, ctx);   // missing grilling+anti-scope
+  await cmdRun({ tier: 'full', task: 'demo', memorial: memPath, spec: goodSpec, 'no-test-gate': true }, ctx);  // both present
 
   const store = new MemorialStore(new JsonFilePersistence(memPath));
   const grill = store.list().find((e) => e.id === 'pre-emit-grilling')!;

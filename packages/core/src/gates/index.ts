@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { GateOutcome, EngineDeps } from '../role-engine.ts';
-import type { RoleResult, RoundConfig } from '../types.ts';
+import type { Role, RoleResult, RoundConfig } from '../types.ts';
 import type { CitationResolver } from './citation.ts';
 import type { Mutation, MutationRunner } from './anti-self-confirming.ts';
 import { verifyCitations } from './citation.ts';
@@ -111,6 +111,29 @@ export function antiSelfConfirmingGate(mutationsFor: (r: RoleResult) => Mutation
   };
 }
 
+// Engine-hook factory: the test suite must be GREEN. Runs `run()` (the project's test
+// command) after the code-producing roles and BLOCKS the round on failure — a deterministic
+// "no COMPLETE over red tests" gate, the one check that shouldn't be left to a model's
+// self-reported status. Blocking by design (a red suite is a hard fact, not a heuristic).
+export function testGate(opts: {
+  run: () => boolean | Promise<boolean>;
+  roles?: Role[]; // roles after which to run the suite (default: implementer + reviewer)
+  accrual?: { sink: MemorialAccrual; memorialId: string };
+}): EngineGate {
+  const roles = new Set<Role>(opts.roles ?? ['implementer', 'reviewer']);
+  return async (result: RoleResult, config: RoundConfig): Promise<GateOutcome> => {
+    if (!roles.has(result.role)) return { pass: true, findings: [] };
+    const green = await opts.run();
+    if (opts.accrual) {
+      if (green) opts.accrual.sink.recordConfirmation(opts.accrual.memorialId, config.runDate);
+      else opts.accrual.sink.recordViolation(opts.accrual.memorialId, config.runDate);
+    }
+    return green
+      ? { pass: true, findings: [] }
+      : { pass: false, findings: [`test suite is RED after ${result.role} — round blocked (a green suite is required to complete)`] };
+  };
+}
+
 // ── Default impls (real, environment-specific; unit tests inject mocks instead) ──────────
 
 // Resolve cited content via git at a pinned SHA. Returns null on any failure.
@@ -155,6 +178,21 @@ export function makeFileMutationRunner(opts: {
       }
     } finally {
       writeFileSync(opts.file, original); // always restore
+    }
+  };
+}
+
+// Build a test runner for testGate: runs the project's test command in `cwd` and returns
+// true iff it exits 0. Default command is `npm test` (which, in Cairn-style repos, runs the
+// full clean build + suite via pretest). Any non-zero exit (compile error or test failure)
+// is RED.
+export function npmTestRunner(cwd: string, command: string[] = ['npm', 'test']): () => boolean {
+  return () => {
+    try {
+      execFileSync(command[0], command.slice(1), { cwd, stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
     }
   };
 }
