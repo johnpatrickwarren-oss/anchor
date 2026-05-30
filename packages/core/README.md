@@ -63,7 +63,7 @@ The cross-project learning loop — the capability no commodity runtime has. `Me
 ## Run
 
 ```bash
-cd packages/core && node --test test/*.test.ts   # or: npm test
+cd packages/core && node --test test/*.test.ts   # or: pnpm test
 ```
 
 Behavior is verified against the mock adapter (~114 tests): phase order per tier, per-role model + tier routing, escalation pause/resume, the gates (citation, anti-self-confirming, grilling, anti-scope, **green-test**), the **remediation loop** (converge-to-green), **within-feature parallelism** + merge, **adaptive structure** (2nd reviewer), per-phase timing, the no-bare-total measurement record, the memorial store (accretion, pruning/retirement, persistence, reinforcement injection), and the **routing-accuracy** harness (corpus grading, calibration ECE, model-drift + safe routing).

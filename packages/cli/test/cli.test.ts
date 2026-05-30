@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { MockRuntimeAdapter, MemoryPersistence, MemorialStore, JsonFilePersistence, ROUTING_PROVENANCE } from '@anchor/core';
 import type { MemorialEntry } from '@anchor/core';
 import { parseArgs } from '../src/args.ts';
-import { cmdRoute, cmdRun, cmdMemorial, cmdWave, cmdCalibrate } from '../src/commands.ts';
+import { cmdRoute, cmdRun, cmdMemorial, cmdWave, cmdCalibrate, cmdInit } from '../src/commands.ts';
 
 // Run a body with a stub ANTHROPIC_API_KEY (the drift gate skips entirely without one).
 async function withApiKey(fn: () => Promise<void>) {
@@ -89,6 +89,59 @@ test('calibrate: no drift → reports current', async () => {
     await cmdCalibrate({}, ctx);
     assert.match(out.join('\n'), /no drift/i);
   });
+});
+
+function initCtx(cwd: string) {
+  const out: string[] = [];
+  const ctx: CliContext = {
+    cwd, now: () => '2026-05-29', stdout: (s) => out.push(s),
+    makeAdapter: () => new MockRuntimeAdapter(), makePersistence: () => new MemoryPersistence(),
+    listModels: async () => [...ROUTING_PROVENANCE.models],
+  };
+  return { ctx, out };
+}
+
+test('init scaffolds the greenfield files (package.json with a test script, passing smoke test, PRD)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-init-'));
+  const { ctx, out } = initCtx(dir);
+  const r = await cmdInit(undefined, { 'no-git': true }, ctx);
+  assert.equal(r.code, 0);
+  for (const f of ['package.json', 'test/smoke.test.js', 'coordination/PRD.md', 'src/.gitkeep', '.gitignore', 'README.md']) {
+    assert.ok(existsSync(join(dir, f)), `expected ${f} to be scaffolded`);
+  }
+  const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+  assert.equal(pkg.scripts.test, 'node --test'); // the gate runs `npm test` → this
+  assert.equal(pkg.type, 'module');
+  assert.match(out.join('\n'), /scaffolded greenfield project/);
+});
+
+test('init is idempotent — existing files are skipped, not clobbered (unless --force)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-init-idem-'));
+  writeFileSync(join(dir, 'package.json'), '{"name":"mine","scripts":{"test":"echo custom"}}');
+  const { ctx, out } = initCtx(dir);
+  await cmdInit(undefined, { 'no-git': true }, ctx);
+  // untouched without --force
+  assert.match(readFileSync(join(dir, 'package.json'), 'utf8'), /echo custom/);
+  assert.match(out.join('\n'), /skipped.*package\.json/);
+  // --force overwrites
+  await cmdInit(undefined, { 'no-git': true, force: true }, ctx);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts.test, 'node --test');
+});
+
+// The greenfield proof at the gate's resolution: after `init`, the exact command the
+// green-test gate runs (`npm test`) must exit 0 on the empty repo — so round 1 has a green
+// suite to gate on before any real code exists. This is the mechanism the README flagged as
+// the from-empty gap; this test pins it.
+test('init greenfield smoke: `npm test` is green in a freshly-initialized empty dir', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-init-smoke-'));
+  const cliPath = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+  execFileSync('node', [cliPath, 'init', dir, '--no-git'], { encoding: 'utf8' });
+  // The gate's command, run for real. Throws (non-zero) → red → test fails.
+  // Strip NODE_TEST_CONTEXT: this test runs *inside* `node --test`, which would otherwise make
+  // the scaffolded project's own `node --test` skip its files ("run() called recursively").
+  const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
+  const testOut = execFileSync('npm', ['test'], { cwd: dir, encoding: 'utf8', env });
+  assert.match(testOut, /pass 1/); // the scaffolded smoke test passed
 });
 
 test('parseArgs handles --flag value, --flag=value, boolean, positionals', () => {

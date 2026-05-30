@@ -4,11 +4,9 @@
   "private": true,
   "description": "Workspace root for the Anchor tool packages (@anchor/core, @anchor/runtime-agent-sdk).",
   "license": "Apache-2.0",
-  "workspaces": [
-    "packages/*"
-  ],
+  "packageManager": "pnpm@11.1.2",
   "engines": { "node": ">=24" },
   "scripts": {
-    "test": "npm run test --workspaces --if-present"
+    "test": "pnpm -r --if-present test"
   }
 }
