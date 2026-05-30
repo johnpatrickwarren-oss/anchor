@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import {
   runRound, runRoundFromDirective, resumeRound, runWave, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
-  composeGates, grillingGate, antiScopeGate, seedBuiltinDisciplines,
+  composeGates, grillingGate, antiScopeGate, testGate, npmTestRunner, seedBuiltinDisciplines,
 } from '@anchor/core';
 import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult, WaveItem, WaveResult } from '@anchor/core';
 import { AgentSdkAdapter } from '@anchor/runtime-agent-sdk';
@@ -93,15 +93,21 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   // accrue V/C against the built-in disciplines (closing the learning loop), and the memorial's
   // applicable() rules are injected into role prompts by the engine.
   const strict = bool(flags, 'strict');
-  const gates = bool(flags, 'no-gates') ? undefined : composeGates(
+  const gateList = [
     grillingGate(undefined, strict, memorial ? { sink: memorial, memorialId: 'pre-emit-grilling' } : undefined),
     antiScopeGate({ blocking: strict, accrual: memorial ? { sink: memorial, memorialId: 'anti-scope' } : undefined }),
-  );
+  ];
+  // Green-test gate: BLOCKS the round on a red suite (deterministic; not advisory). The one
+  // check we don't leave to a model's self-reported status. --no-test-gate / --mock skip it.
+  if (!bool(flags, 'no-test-gate') && !bool(flags, 'mock')) {
+    gateList.push(testGate({ run: npmTestRunner(str(flags, 'cwd') ?? ctx.cwd), accrual: memorial ? { sink: memorial, memorialId: 'tests-pass' } : undefined }));
+  }
+  const gates = bool(flags, 'no-gates') ? undefined : composeGates(...gateList);
   const roundId = str(flags, 'round') ?? 'R01';
   const deps = {
     adapter, memorial, gates,
     // The built-in gates accrue these; reviewer-signal accrual skips them (no double-count).
-    gateOwnedMemorialIds: memorial && !bool(flags, 'no-gates') ? ['pre-emit-grilling', 'anti-scope'] : undefined,
+    gateOwnedMemorialIds: memorial && !bool(flags, 'no-gates') ? ['pre-emit-grilling', 'anti-scope', 'tests-pass'] : undefined,
   };
   const statePath = str(flags, 'state') ?? join(ctx.cwd, '.anchor', `round-${roundId}.json`);
 
@@ -232,15 +238,23 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
   // a synchronous body, so concurrent record() calls on a single instance are safe (counts
   // are commutative, no interleaved corruption). Separate instances on one file would
   // last-writer-win and lose accruals.
-  const depsFor = (item: WaveItem) => ({
-    adapter: ctx.makeAdapter({ ...flags, cwd: item.cwd ?? str(flags, 'cwd') }),
-    gates: noGates ? undefined : composeGates(
+  const testGateOn = !bool(flags, 'no-test-gate') && !bool(flags, 'mock');
+  const depsFor = (item: WaveItem) => {
+    const cwd = item.cwd ?? str(flags, 'cwd');
+    const gateList = [
       grillingGate(undefined, strict, memorial ? { sink: memorial, memorialId: 'pre-emit-grilling' } : undefined),
       antiScopeGate({ blocking: strict, accrual: memorial ? { sink: memorial, memorialId: 'anti-scope' } : undefined }),
-    ),
-    memorial,
-    gateOwnedMemorialIds: memorial && !noGates ? ['pre-emit-grilling', 'anti-scope'] : undefined,
-  });
+    ];
+    // Green-test gate per item: a red suite blocks that item (→ wave PARTIAL), so a buggy
+    // feature can't come back COMPLETE. Runs in the item's own cwd/worktree.
+    if (testGateOn && cwd) gateList.push(testGate({ run: npmTestRunner(cwd), accrual: memorial ? { sink: memorial, memorialId: 'tests-pass' } : undefined }));
+    return {
+      adapter: ctx.makeAdapter({ ...flags, cwd }),
+      gates: noGates ? undefined : composeGates(...gateList),
+      memorial,
+      gateOwnedMemorialIds: memorial && !noGates ? ['pre-emit-grilling', 'anti-scope', 'tests-pass'] : undefined,
+    };
+  };
 
   const wave = await runWave(items, depsFor, {
     waveId,

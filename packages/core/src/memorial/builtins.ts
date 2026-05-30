@@ -7,6 +7,7 @@ import type { MemorialStore } from './store.ts';
 export const BUILTIN_DISCIPLINES = [
   { id: 'pre-emit-grilling', trigger: 'spec emit', rule: 'Run a pre-emit grilling pass (CRITICAL / LIKELY-SURFACES / PRE-EMPTABLE) before emitting the spec (skill 01).', origin: 'Anchor skill 01' },
   { id: 'anti-scope', trigger: 'spec emit', rule: 'Every spec must carry an explicit Anti-scope section naming what is NOT in scope (skill 06).', origin: 'Anchor skill 06' },
+  { id: 'tests-pass', trigger: 'implementation', rule: 'The full test suite must be GREEN before the round can complete; a failing suite blocks the round (no COMPLETE over red).', origin: 'Anchor test-green gate' },
 ];
 
 export function seedBuiltinDisciplines(store: MemorialStore): void {

@@ -15,8 +15,8 @@ export { runWave } from './wave.ts';
 export type { WaveItem, WaveRoundResult, WaveResult, WaveConfig } from './wave.ts';
 // Phase 3 — discipline gates.
 export {
-  composeGates, citationGate, antiSelfConfirmingGate, grillingGate, antiScopeGate,
-  gitCitationResolver, makeFileMutationRunner,
+  composeGates, citationGate, antiSelfConfirmingGate, grillingGate, antiScopeGate, testGate,
+  gitCitationResolver, makeFileMutationRunner, npmTestRunner,
   verifyCitations, parseCitationTable, checkAntiSelfConfirming, checkGrillingEmitted,
   checkAntiScope, checkAntiScopeViolation, gateResult, toGateOutcome,
 } from './gates/index.ts';
