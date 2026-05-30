@@ -22,8 +22,27 @@ Executable gates turn Anchor disciplines from prose into code; wire them into `E
 - **`checkAntiSelfConfirming`** (`gates/anti-self-confirming.ts`) — skill 13's mutation check: every supplied mutation must be *killed* (tests must fail); a survivor is a self-confirming-test CRITICAL. Default `makeFileMutationRunner` applies/runs/restores.
 - **`checkGrillingEmitted`** (`gates/grilling.ts`, skill 01) — structural: the spec must carry a pre-emit grilling pass (CRITICAL / LIKELY-SURFACES / PRE-EMPTABLE buckets, or a grilling heading). Catches "no grilling at all".
 - **`checkAntiScope` / `checkAntiScopeViolation`** (`gates/anti-scope.ts`, skill 06) — structural: the spec must carry an `## Anti-scope` section; and (optional) no written file may match a declared anti-scope pattern (substring or `*` glob).
+- **`testGate`** (`gates/index.ts`) — the **green-test gate**: runs the project's test command (`npmTestRunner`, default `npm test`) after the implementer and **BLOCKS the round on a red suite**. Deterministic, blocking by design — the one check Anchor will not leave to a model's self-reported status ("no COMPLETE over red"). Runs in the engine process (not the agent sandbox), so the engine owns verification; `--test-cmd` points it at a faster/incremental command.
 
-**Prompt wiring (layer 2):** the engine's default role prompts now *instruct* these disciplines — the Architect is told to write an anti-scope section, cite inherited code, and run a grilling pass; the Implementer/Reviewer are told to avoid/check self-confirming tests. So a compliant agent produces them and the gates verify them.
+**Prompt wiring (layer 2):** the engine's default role prompts *instruct* these disciplines — the Architect writes an anti-scope section, cites inherited code, runs a grilling pass, and declares parallel units when applicable; the Implementer/Reviewer avoid/check self-confirming tests. A global note tells every role the **engine owns verification** (no role runs the suite, asks the operator to, or escalates over a discipline it can't act on). So a compliant agent produces the artifacts and the gates verify them.
+
+## Engine — converge to green, scale to the work
+
+Beyond the linear state machine, the engine now actively converges and right-sizes:
+
+- **Remediation loop** — when a code-producing role's gates fail, the engine re-runs it with the findings as feedback and re-checks, up to `maxFixAttempts` (default 2), instead of stopping at the first red. The cycle *converges to green* rather than reporting failure. Each attempt is its own recorded phase.
+- **Within-feature parallelism** — when the Architect declares file-disjoint **units** (`ANCHOR-UNIT [id]: <scope>`), the engine fans out one sub-implementer per unit concurrently (a $0-token JS pool), then merges (summed usage, all artifacts, worst-status-wins). `RoundConfig.units` / `EngineDeps.rolesOverride` are the seams.
+- **Adaptive structure** — a high-risk directive (the same `HIGH_STAKES` signal that routes models to opus) earns a **second independent reviewer pass** (`adaptRolesForRisk`); routine work is untouched.
+- **Per-phase timing** — `PhaseRecord.durationMs` records the wall-clock each role took (injectable clock via `EngineDeps.now`), so where a round's wall goes is measurable, separate from per-role token cost.
+
+## Routing — scope decides the role set + models
+
+`routing/` turns a directive into `{tier, per-role models}` deterministically ($0):
+
+- **Tier auto-routing** (`classifyTier`) — scope → role set: mechanical → `implementer-only` (just the implementer), self-contained additive → `audit` (implementer + reviewer + memorial, no separate architect), complex/risky → `full`. Case-insensitive markers; high-stakes guard wins.
+- **Per-role model routing** (`selectRoleModelClasses`) — opus/sonnet/haiku by change-risk: load-bearing → opus, scaled-down/mechanical tiers → sonnet, memorial → haiku. The green-test gate backstops correctness, so the `audit` reviewer routes to sonnet.
+- **Routing-accuracy harness** (`test/routing-corpus.ts` + `routing-accuracy.test.ts` + `routing-calibration.test.ts`) — grades the classifier against a labeled corpus with an **asymmetric** metric (hard-fail on under-scaling, report over-scaling), a confusion matrix, a confidence-calibration ECE, and a **live oracle** (`scripts/routing-oracle.mjs`, periodic/paid) that grounds the labels by ablation.
+- **Model-drift** (`routing/provenance.ts`) — `checkModelDrift` compares the API's models against the set the labels were grounded under; on a new model the CLI **fails safe** (over-provisions) until you re-ground.
 
 ## Memorial service (Phase 4 — implemented)
 
@@ -37,8 +56,9 @@ The cross-project learning loop — the capability no commodity runtime has. `Me
 
 ## What's NOT here yet (explicit seams)
 
-- **More gates** — the P3 ten-axis spot-checks (mostly judgment; a few lint-able). The `gates` hook is the home for them. Default-composing the structural gates inside `@anchor/cli run` is a small follow-up (they need no external input).
+- **More gates** — the P3 ten-axis spot-checks (mostly judgment; a few lint-able). The `gates` hook is the home for them. (The structural + green-test gates are now default-composed inside `@anchor/cli`.)
 - **More adapters** — `AgentSdkAdapter` ships in the sibling [`@anchor/runtime-agent-sdk`](../runtime-agent-sdk) package; `AtomicAdapter` / `ClaudeWorkflowAdapter` are still TODO. `MockRuntimeAdapter` ships here for tests.
+- **A model-assisted tier tiebreaker** — for low-confidence/ambiguous directives (the 0.50-default bucket the calibration harness flags). Today they fall back to `full` (safe). The live oracle informs whether it's worth building.
 
 ## Run
 
@@ -46,4 +66,4 @@ The cross-project learning loop — the capability no commodity runtime has. `Me
 cd packages/core && node --test test/*.test.ts   # or: npm test
 ```
 
-Behavior is verified against the mock adapter (33 tests): phase order per tier, per-role model routing + overrides, escalation pause/resume, gate-halt, the no-bare-total measurement record, the citation + anti-self-confirming gates, and the memorial store (accretion, pruning/retirement, persistence, reinforcement injection into role prompts).
+Behavior is verified against the mock adapter (~114 tests): phase order per tier, per-role model + tier routing, escalation pause/resume, the gates (citation, anti-self-confirming, grilling, anti-scope, **green-test**), the **remediation loop** (converge-to-green), **within-feature parallelism** + merge, **adaptive structure** (2nd reviewer), per-phase timing, the no-bare-total measurement record, the memorial store (accretion, pruning/retirement, persistence, reinforcement injection), and the **routing-accuracy** harness (corpus grading, calibration ECE, model-drift + safe routing).

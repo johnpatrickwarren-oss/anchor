@@ -24,9 +24,13 @@ const result = await runRound(
 | Cost | `result.total_cost_usd` (in `handoff`) |
 | Status | role's final text: `ESCALATE …` → ESCALATE; `HALT`/`DIAGNOSTIC` → BLOCKED; else READY (Anchor's NEXT-ROLE convention) |
 
+## Model listing (for drift detection)
+
+`listAvailableModels()` calls `GET /v1/models` and returns the available model ids — the cheap (~tokenless) half of model-drift detection that `@anchor/core`'s `checkModelDrift` + the CLI's startup gate use. `fetchFn` is injectable (unit-tested with no network); it follows pagination and throws on a non-OK response so callers treat any failure as "skip the check" (drift detection is best-effort and never blocks a run). Also exported: `parseUnits` (parses the Architect's `ANCHOR-UNIT` lines for within-feature parallelism).
+
 ## ⚠️ Verification status
 
-**The mapping logic is fully unit-tested** (7/7) by injecting a fake `query` stream — `mapUsage`, `extractArtifacts`, `detectStatus`, `buildQueryOptions`, and `spawnRole` end-to-end with mocked SDK messages.
+**The mapping logic is fully unit-tested** (27 tests) by injecting a fake `query` stream — `mapUsage`, `extractArtifacts`, `detectStatus`, `parseStatusContract`, `parseMemorialSignals`, `parseUnits`, `buildQueryOptions`, `resolveMaxTurns`, `listAvailableModels`, and `spawnRole` end-to-end (incl. the maxTurns/transient-error preserve-on-error paths) with mocked SDK messages.
 
 **✅ The live path is VERIFIED (2026-05-29).** `npm run smoke` was run against a real model (Claude Code / Max subscription auth, no API key): the Implementer role ran on `claude-sonnet-4-6`, wrote a correct `add(a,b)` module + a passing `node:test`, and reported real usage (357,886 cache-read + 2,760 output tokens). All five checks passed. The adapter works end-to-end against a real model.
 

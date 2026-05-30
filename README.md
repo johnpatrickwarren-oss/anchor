@@ -4,7 +4,7 @@
 
 The name comes from the **four-anchor pre-merge defense** — the structural backbone of this methodology. Each anchor is a discipline checkpoint; together they catch what single-pass review misses.
 
-This is primarily a methodology pack, not a framework. It is a set of explicit disciplines you (and your agents) apply at specific moments in a project. It can be applied alongside [Superpowers](https://github.com/obra/superpowers), [CrewAI](https://github.com/crewaiinc/crewai), [LangGraph](https://github.com/langchain-ai/langgraph), [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), or any other agent runtime — or with a single agent or no agents at all. _(There is now also an experimental code layer, the [`@anchor/*` tool](#the-anchor-tool-experimental), that operationalizes the disciplines as machine-enforced gates + a learning loop — see below.)_
+This is primarily a methodology pack, not a framework. It is a set of explicit disciplines you (and your agents) apply at specific moments in a project. It can be applied alongside [Superpowers](https://github.com/obra/superpowers), [CrewAI](https://github.com/crewaiinc/crewai), [LangGraph](https://github.com/langchain-ai/langgraph), [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), or any other agent runtime — or with a single agent or no agents at all. _(There is now also a code layer, the [`@anchor/*` tool](#the-anchor-tool), that operationalizes the disciplines as machine-enforced gates + a deterministic green-test gate + a learning loop — see below.)_
 
 ## Quick start
 
@@ -156,26 +156,29 @@ The coordination file structure (`coordination/specs/`, `coordination/reviews/`,
 | Gate on churning | Human notices in real time | Halt discipline + escalation |
 | Setup | Per-chat project instructions | `run-pipeline.sh` + `CLAUDE.md` |
 
-## The `@anchor/*` tool (experimental)
+## The `@anchor/*` tool
 
-Anchor is primarily a *methodology*, but `packages/` now contains an experimental **tool** that operationalizes the disciplines as code — for when you want the cycle to run programmatically with the disciplines enforced by machine, not just by memory.
+Anchor is primarily a *methodology*, but `packages/` contains a **tool** that operationalizes the disciplines as code — the cycle runs programmatically with the disciplines enforced by machine and a deterministic test gate, not just by memory. You give it the scope; it decides how much cycle the work needs and runs it to a green suite.
 
 | Package | What it is |
 |---|---|
-| [`@anchor/core`](packages/core) | The role engine (Architect→Implementer→Reviewer→Memorial state machine), tier + per-role model routing, the discipline **gates** (citation, anti-self-confirming-test, pre-emit-grilling, anti-scope), and the **memorial** service (the cross-project V/C learning loop). Dependency-free, plain TypeScript (no build step). |
-| [`@anchor/runtime-agent-sdk`](packages/runtime-agent-sdk) | A `RuntimeAdapter` that runs each role via the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/typescript). |
-| [`@anchor/cli`](packages/cli) | `anchor run / route / memorial` — the operator surface. |
+| [`@anchor/core`](packages/core) | The role engine (Architect→Implementer→Reviewer→Memorial state machine) plus: a **green-test gate** (no COMPLETE over red — the engine runs the suite and gates on it) + a **remediation loop** (a red gate sends the failures back to the implementer until green); **within-feature parallelism** (the Architect declares file-disjoint units → concurrent sub-implementers); **adaptive structure** (high-risk work earns a 2nd cold-eye reviewer); scope-driven **tier auto-routing** + cost-aware **per-role model routing**; per-phase **wall-clock timing**; the discipline **gates** (citation, anti-self-confirming, pre-emit-grilling, anti-scope); the **memorial** learning loop; a **routing-accuracy** harness (corpus + live oracle + calibration); and **model-drift** detection with fail-safe over-provisioning. Dependency-free, plain TypeScript (no build step). |
+| [`@anchor/runtime-agent-sdk`](packages/runtime-agent-sdk) | A `RuntimeAdapter` that runs each role via the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/typescript); live-verified. |
+| [`@anchor/cli`](packages/cli) | `anchor run / wave / route / memorial / calibrate` — the operator surface. |
 
 ```bash
 npm install                                                   # workspace install (brings the Agent SDK)
-node packages/cli/src/cli.ts route --task "Modify engine/x.ts (architectural-decision)"   # dry-run routing
-node packages/cli/src/cli.ts run --mock --tier audit --task "…"                           # offline (no model/tokens)
-node packages/cli/src/cli.ts run --tier full --task "…" --cwd ./work --memorial ~/.anchor/memorial.json   # real run
+node packages/cli/src/cli.ts route --task "Modify engine/x.ts (architectural-decision)"   # dry-run: tier + per-role models
+node packages/cli/src/cli.ts run  --task "add a pure formatDuration helper; additive"     # self-routes: scope → tier → models
+node packages/cli/src/cli.ts wave --plan plan.json --memorial ~/.anchor/memorial.json     # fan out independent features in parallel
+node packages/cli/src/cli.ts calibrate                                                     # report model drift vs the grounded labels
 ```
 
-Structural gates are on by default as advisory warnings (`--strict` to block); pass `--memorial` and a run accrues discipline V/C and reinforces those rules into future runs.
+**Give it the scope, it decides the rest.** The tier-router picks the role set — *just the implementer* for mechanical work, *+ reviewer/memorial* (`audit`) for self-contained additive work, the *full cycle* for complex/risky work — per-role model routing picks opus/sonnet/haiku by change-risk, and the **green-test gate + remediation loop** enforce a passing suite (the implementer re-runs on red until green, deterministically, no "COMPLETE over failing tests"). Pass `--memorial` and the run accrues discipline V/C and reinforces those rules into future runs. On a new model release, `run`/`wave` detect the drift on startup and **fail safe** — over-provision (full tier + opus) until you deliberately re-ground with `calibrate` + the oracle grid. (Structural gates are advisory by default; `--strict` to block. Flags: `--max-fix`, `--test-cmd`, `--no-test-gate`, `--no-risk-adapt`, `--no-model-check`.)
 
-**Methodology vs. tool — which to use.** The tool *mechanically enforces* a subset of the disciplines (the four gates + the memorial loop); the methodology covers the rest (PM/TPM/Coordinator roles, the full P3 axes, the bash overnight pipeline). The tool is **experimental and reference-grade** — the engine, gates, and memorial are unit-tested and the Agent-SDK adapter is live-verified, but it has not yet been dogfooded to ship a real project, so the bash `run-pipeline.sh` ([Usage modes](#usage-modes)) remains the battle-tested path. Use the tool for programmatic, machine-enforced discipline; use the methodology + bash pipeline for production work today.
+**Status — now live-dogfooded, with honest limits.** The tool has been run live against a real TypeScript codebase (Cairn) in repeated head-to-head comparisons against a dynamic-workflow baseline: it shipped **3/3 complex features test-green and autonomously** (correct code, no COMPLETE-over-red, and it *pauses* rather than over-claims when it can't verify), at roughly a third of the baseline's cost, and — once it auto-tiers — comparable wall-clock. The engine/gates/memorial/routing are unit-tested (~170 tests across the workspace) and the Agent-SDK adapter is live-verified. **But** it has not yet been used to build a standalone project from an empty repo end-to-end (the live runs added features to an existing project), and on raw single-feature *velocity* a lighter workflow can still win. So the bash `run-pipeline.sh` ([Usage modes](#usage-modes)) remains the longest-battle-tested path. Use the tool for programmatic, machine-enforced discipline with autonomous role/model scaling; use the methodology + bash pipeline for the highest-stakes production work today.
+
+**Methodology vs. tool.** The tool mechanically enforces a subset of the disciplines (the gates + the green-test/remediation loop + the memorial); the methodology covers the rest (PM/TPM/Coordinator roles, the full P3 axes, the bash overnight pipeline).
 
 ## Origin
 
