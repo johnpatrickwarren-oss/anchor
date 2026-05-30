@@ -1,7 +1,7 @@
 // @anchor/core — public surface.
 export type {
   Role, Tier, ModelClass, Usage, Escalation, RoleStatus, RoleSpec, RoleResult,
-  Resolution, RoundConfig, PhaseRecord, RunStatus, RunResult,
+  Resolution, RoundConfig, PhaseRecord, RunStatus, RunResult, ImplUnit,
 } from './types.ts';
 export { rolesForTier } from './tiers.ts';
 export { resolveModel, DEFAULT_MANIFEST } from './models.ts';

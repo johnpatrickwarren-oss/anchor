@@ -171,6 +171,20 @@ export function parseMemorialSignals(finalText: string): { confirm: string[]; vi
   };
 }
 
+// Parse the Architect's ANCHOR-UNIT lines into independent implementation units (within-feature
+// parallelism). One per line: `ANCHOR-UNIT [id]: <scope + files it owns>`. Tolerant: no lines →
+// []; duplicate ids dropped. The engine fans out one sub-implementer per unit when ≥2 declared.
+const UNIT_RE = /^ANCHOR-UNIT\s*\[([^\]]+)\]:\s*(.+)$/gim;
+export function parseUnits(finalText: string): { id: string; scope: string }[] {
+  const units: { id: string; scope: string }[] = [];
+  for (const m of finalText.matchAll(UNIT_RE)) {
+    const id = m[1].trim();
+    const scope = m[2].trim();
+    if (id && scope && !units.some((u) => u.id === id)) units.push({ id, scope });
+  }
+  return units;
+}
+
 export function buildPrompt(spec: RoleSpec): string {
   const refs = spec.contextRefs.length ? `\n\nContext files (read as needed): ${spec.contextRefs.join(', ')}` : '';
   return `${spec.prompt}${refs}${STATUS_CONTRACT}${MEMORIAL_CONTRACT}`;
@@ -222,7 +236,12 @@ export class AgentSdkAdapter implements RuntimeAdapter {
     const finalText = lastAssistantText(collected);
     const artifacts = extractArtifacts(collected);
     const usage = mapUsage(result?.usage);
-    const handoff = { model: spec.model, cost_usd: result?.total_cost_usd ?? 0, summary: finalText.slice(0, 1000) };
+    const handoff: Record<string, unknown> = { model: spec.model, cost_usd: result?.total_cost_usd ?? 0, summary: finalText.slice(0, 1000) };
+    // Architect-declared parallel implementation units → engine fan-out (only when ≥2 declared).
+    if (spec.role === 'architect') {
+      const units = parseUnits(finalText);
+      if (units.length > 1) handoff.units = units;
+    }
 
     // Turn-budget exhaustion — whether surfaced as a thrown error or an `error_max_turns`
     // result — degrades to a RESUMABLE escalation (the engine PAUSES), preserving the

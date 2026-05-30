@@ -15,7 +15,7 @@
 //   - `memorial` -> the memorial service (record V/C, inject reinforcements). Phase 4.
 
 import type {
-  Escalation, Resolution, Role, RoleResult, RoleSpec, RoundConfig, PhaseRecord, RunResult,
+  Escalation, ImplUnit, Resolution, Role, RoleResult, RoleSpec, RoundConfig, PhaseRecord, RunResult, Usage,
 } from './types.ts';
 import type { RuntimeAdapter } from './runtime-adapter.ts';
 import type { ModelManifest } from './models.ts';
@@ -73,7 +73,8 @@ const ROLE_OBLIGATIONS: Record<Role, string> = {
     'Draft the spec. Include an explicit "## Anti-scope" section naming what is NOT in scope. ' +
     'Cite every inherited primitive in an "Existing architectural surface" table (file + pinned SHA + line range + verbatim snippet). ' +
     'Before emitting, run a pre-emit grilling pass and inline its CRITICAL / LIKELY-SURFACES / PRE-EMPTABLE buckets. ' +
-    'Emit the spec ARTIFACT only — do not narrate your process or restate the brief back to the operator. Keep every structured part COMPLETE (citation table, acceptance criteria, anti-scope, the grilling buckets); trim only prose padding and commentary, never the spec content.',
+    'Emit the spec ARTIFACT only — do not narrate your process or restate the brief back to the operator. Keep every structured part COMPLETE (citation table, acceptance criteria, anti-scope, the grilling buckets); trim only prose padding and commentary, never the spec content. ' +
+    'If the feature splits into independent, FILE-DISJOINT parts, declare each as a parallel implementation unit via the ANCHOR-UNIT contract (one per line: `ANCHOR-UNIT [id]: <scope + the files it owns>`) so the engine can build them concurrently — only when the parts genuinely do not share files.',
   implementer:
     "Implement exactly to the spec (cold-read; don't seek the Architect's reasoning). Every acceptance criterion gets a test, " +
     'and no test may be self-confirming (it must FAIL if the production line it checks is broken). ' +
@@ -111,6 +112,8 @@ async function runFrom(
   const contextRefsFor = deps.contextRefsFor ?? defaultContextRefs;
   const manifest = deps.manifest;
   const overrides = deps.modelOverrides;
+  // Within-feature parallelism: implementation units, pre-set or declared by the Architect.
+  let units = config.units;
 
   for (let i = startIndex; i < roles.length; i++) {
     const role = roles[i];
@@ -123,7 +126,11 @@ async function runFrom(
     }
 
     const spec: RoleSpec = { role, model, contextRefs: contextRefsFor(role, config, phases), prompt };
-    let result = await deps.adapter.spawnRole(spec);
+    // Fan out the implementer across independent units (≥2) — one sub-implementer per unit,
+    // run concurrently, then merged. A single/no unit runs the normal serial implementer.
+    let result = (role === 'implementer' && units && units.length > 1)
+      ? await fanOutImplementers(units, spec, prompt, deps.adapter)
+      : await deps.adapter.spawnRole(spec);
 
     // Escalation: pause for the operator, then resume the SAME role once with the answer.
     if (result.status === 'ESCALATE' && result.escalation) {
@@ -190,10 +197,63 @@ async function runFrom(
       }
     }
 
+    // The Architect is the decomposition role: capture any independent units it declared so
+    // the upcoming implementer can fan out across them. Validated (id + scope strings).
+    if (role === 'architect') {
+      const declared = (result.handoff as Record<string, unknown>)?.units;
+      if (Array.isArray(declared)) {
+        const valid = declared.filter(
+          (u): u is ImplUnit => !!u && typeof (u as ImplUnit).id === 'string' && typeof (u as ImplUnit).scope === 'string',
+        );
+        if (valid.length) units = valid;
+      }
+    }
+
     handoff[role] = result.handoff;
   }
 
   return { roundId: config.roundId, tier: config.tier, status: 'COMPLETE', phases, warnings, CAVEAT };
+}
+
+// Within-feature parallelism: run one sub-implementer per declared unit CONCURRENTLY, each
+// scoped to only its unit, then merge into a single implementer result. The orchestration is
+// a plain JS Promise pool — $0 model tokens, the same determinism principle as the wave.
+async function fanOutImplementers(
+  units: ImplUnit[], baseSpec: RoleSpec, basePrompt: string, adapter: RuntimeAdapter,
+): Promise<RoleResult> {
+  const parts = await Promise.all(units.map((u) => adapter.spawnRole({
+    ...baseSpec,
+    prompt: `${basePrompt}\n\nPARALLEL UNIT [${u.id}] — implement ONLY this unit; do NOT touch other units' files:\n${u.scope}`,
+  })));
+  return mergeImplResults(parts, units);
+}
+
+const ZERO_USAGE: Usage = { input: 0, cache_creation: 0, cache_read: 0, output: 0 };
+
+// Merge parallel sub-implementer results into one implementer phase: summed usage, all
+// artifacts, worst status wins (any BLOCKED → BLOCKED; any ESCALATE → ESCALATE; else READY),
+// deduped memorial signals. The merged handoff records each unit's status for auditability.
+function mergeImplResults(parts: RoleResult[], units: ImplUnit[]): RoleResult {
+  const usage = parts.reduce<Usage>((a, p) => ({
+    input: a.input + p.usage.input,
+    cache_creation: a.cache_creation + p.usage.cache_creation,
+    cache_read: a.cache_read + p.usage.cache_read,
+    output: a.output + p.usage.output,
+  }), { ...ZERO_USAGE });
+  const status = parts.some((p) => p.status === 'BLOCKED') ? 'BLOCKED'
+    : parts.some((p) => p.status === 'ESCALATE') ? 'ESCALATE'
+    : parts.every((p) => p.status === 'READY') ? 'READY' : 'BLOCKED';
+  const confirm = [...new Set(parts.flatMap((p) => p.memorialSignals?.confirm ?? []))];
+  const violate = [...new Set(parts.flatMap((p) => p.memorialSignals?.violate ?? []))];
+  return {
+    role: 'implementer',
+    status,
+    artifacts: parts.flatMap((p) => p.artifacts),
+    handoff: { merged: true, units: units.map((u, i) => ({ id: u.id, status: parts[i].status })) },
+    usage,
+    escalation: parts.find((p) => p.escalation)?.escalation,
+    memorialSignals: (confirm.length || violate.length) ? { confirm, violate } : undefined,
+  };
 }
 
 function toPhase(result: RoleResult, model: string): PhaseRecord {
