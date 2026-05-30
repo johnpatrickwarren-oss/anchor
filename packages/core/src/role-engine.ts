@@ -70,22 +70,29 @@ const CAVEAT =
 // failure there is structural (block, don't retry).
 const REMEDIABLE = new Set<Role>(['implementer']);
 
+// Applies to EVERY role (appended in defaultPrompt). The engine owns test verification, so no
+// role runs tests, asks the operator to, or escalates over test execution (the SDK sandbox
+// usually forbids npm/node). Global so it can't leak into a role whose obligation forgot it —
+// e.g. the memorial tripping on the injected `tests-pass` discipline and escalating for a test run.
+const ENGINE_VERIFICATION_NOTE =
+  '\n\nVERIFICATION (all roles): the engine runs the test suite and gates the round on it. Do NOT run tests, ' +
+  'ask the operator to run them, or escalate over test execution — signal your status and let the deterministic ' +
+  'gate verify (a red suite is sent back to the implementer to fix).';
+
 // Role obligations — the disciplines baked into each role's instruction so the agent
 // applies them (grilling gate / anti-scope gate / anti-self-confirming gate then verify).
 const ROLE_OBLIGATIONS: Record<Role, string> = {
   architect:
-    'Draft the spec. Include an explicit "## Anti-scope" section naming what is NOT in scope. ' +
-    'Cite every inherited primitive in an "Existing architectural surface" table (file + pinned SHA + line range + verbatim snippet). ' +
-    'Before emitting, run a pre-emit grilling pass and inline its CRITICAL / LIKELY-SURFACES / PRE-EMPTABLE buckets. ' +
-    'Emit the spec ARTIFACT only — do not narrate your process or restate the brief back to the operator. Keep every structured part COMPLETE (citation table, acceptance criteria, anti-scope, the grilling buckets); trim only prose padding and commentary, never the spec content. ' +
-    'If the feature splits into independent, FILE-DISJOINT parts, declare each as a parallel implementation unit via the ANCHOR-UNIT contract (one per line: `ANCHOR-UNIT [id]: <scope + the files it owns>`) so the engine can build them concurrently — only when the parts genuinely do not share files.',
+    'Draft the spec as an ARTIFACT (no narration, no restating the brief). Required and COMPLETE: a "## Anti-scope" section (what is NOT in scope); ' +
+    'an "Existing architectural surface" citation table for every inherited primitive (file + pinned SHA + line range + verbatim snippet); acceptance criteria; ' +
+    'and an inlined pre-emit grilling pass (CRITICAL / LIKELY-SURFACES / PRE-EMPTABLE). Trim prose padding, never spec content. ' +
+    'If the feature splits into independent FILE-DISJOINT parts, declare each via `ANCHOR-UNIT [id]: <scope + files it owns>` (one per line) for concurrent implementation.',
   implementer:
     "Implement exactly to the spec (cold-read; don't seek the Architect's reasoning). Every acceptance criterion gets a test, " +
     'and no test may be self-confirming (it must FAIL if the production line it checks is broken). ' +
-    'Write the code and the tests, then signal READY — the ENGINE runs the suite and blocks the round on red, sending the failures back for you to fix. ' +
-    'Do NOT escalate to ask the operator to run the tests, and do not block on executing them yourself (your sandbox may forbid it); the deterministic gate owns verification. HALT with a DIAGNOSTIC only if the spec contradicts reality.',
+    'Write the code and the tests, then signal READY. HALT with a DIAGNOSTIC only if the spec contradicts reality.',
   reviewer:
-    'Cold-eye spec-vs-implementation audit. Verify each acceptance criterion against the actual code — the engine runs the suite and gates on it, so judge against the code (and the gate result) rather than executing tests yourself or escalating to ask the operator to. Apply the anti-self-confirming-test check. ' +
+    'Cold-eye spec-vs-implementation audit. Verify each acceptance criterion against the actual code (judge against the code and the gate result). Apply the anti-self-confirming-test check. ' +
     'BE TERSE — output ONLY: one line per acceptance criterion (`AC-n: pass|fail @ file:line`), then the material findings tiered by severity (CRITICAL / MAJOR / MINOR / NIT), then the status + memorial lines. Do NOT restate code, paste test output, or narrate your steps; cite file:line instead of reproducing. A clean review is a few lines, not paragraphs. ' +
     'For each REINFORCEMENT discipline you were given (tagged [id]), judge whether the implementation upheld or broke it and report it back by id via the ANCHOR-MEMORIAL-CONFIRM / ANCHOR-MEMORIAL-VIOLATE contract — this is how the memorial learns from review.',
   memorial: 'Append one discipline-accretion entry recording what this round confirms or violates.',
@@ -95,7 +102,7 @@ const ROLE_OBLIGATIONS: Record<Role, string> = {
 function defaultPrompt(role: Role, config: RoundConfig, handoff: Record<string, unknown>): string {
   const priorRoles = Object.keys(handoff).join(', ') || 'none';
   const specPathNote = role === 'architect' && config.specPath ? `\nWrite the spec to: ${config.specPath}` : '';
-  return `ROLE: ${role}\nROUND: ${config.roundId} (tier ${config.tier})\nTASK: ${config.task}\nPRIOR HANDOFFS FROM: ${priorRoles}\n\nYour obligations:\n${ROLE_OBLIGATIONS[role]}${specPathNote}`;
+  return `ROLE: ${role}\nROUND: ${config.roundId} (tier ${config.tier})\nTASK: ${config.task}\nPRIOR HANDOFFS FROM: ${priorRoles}\n\nYour obligations:\n${ROLE_OBLIGATIONS[role]}${specPathNote}${ENGINE_VERIFICATION_NOTE}`;
 }
 
 // Lean context-by-reference: a role gets the prior roles' artifact PATHS, not their text

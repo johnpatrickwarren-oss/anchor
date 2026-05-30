@@ -46,9 +46,10 @@ test('routeRound routes the reviewer model by change-risk', () => {
   assert.equal(routeRound('documentation-only touch-up', { tierOverride: 'audit' }).modelOverrides.reviewer, 'claude-sonnet-4-6'); // mechanical -> sonnet
 });
 
-test('selectArchitectClass — load-bearing->reasoning, routine full-tier->balanced', () => {
+test('selectArchitectClass — load-bearing->reasoning, mechanical->cheap, routine->balanced', () => {
   assert.equal(selectArchitectClass('Modify engine/detectors/fcp.ts', 'full'), 'reasoning');
   assert.equal(selectArchitectClass('A2 (new architectural pattern): switch middleware', 'full'), 'reasoning');
+  assert.equal(selectArchitectClass('fix a typo in the README (doc-only)', 'full'), 'cheap'); // mechanical -> faster
   assert.equal(selectArchitectClass('Add a sortable column to the users table', 'full'), 'balanced'); // routine
 });
 

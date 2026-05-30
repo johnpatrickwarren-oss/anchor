@@ -12,6 +12,16 @@ test('full tier runs Architect->Implementer->Reviewer->Memorial in order', async
   assert.deepEqual(roleOrder(r), ['architect', 'implementer', 'reviewer', 'memorial']);
 });
 
+test('every role prompt carries the global engine-owns-verification note (no role self-verifies)', async () => {
+  const prompts: Record<string, string> = {};
+  const adapter = new MockRuntimeAdapter({ handler: (spec) => { prompts[spec.role] = spec.prompt; return {}; } });
+  await runRound(cfg('full'), { adapter });
+  for (const role of ['architect', 'implementer', 'reviewer', 'memorial']) {
+    assert.match(prompts[role], /VERIFICATION \(all roles\)/, `${role} missing the global note`);
+    assert.match(prompts[role], /the engine runs the test suite/i);
+  }
+});
+
 test('audit tier drops the Architect', async () => {
   const r = await runRound(cfg('audit'), { adapter: new MockRuntimeAdapter() });
   assert.deepEqual(roleOrder(r), ['implementer', 'reviewer', 'memorial']);
