@@ -1,13 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { MockRuntimeAdapter, MemoryPersistence, MemorialStore, JsonFilePersistence } from '@anchor/core';
 import type { MemorialEntry } from '@anchor/core';
 import { parseArgs } from '../src/args.ts';
 import { cmdRoute, cmdRun, cmdMemorial, cmdWave } from '../src/commands.ts';
 import type { CliContext } from '../src/commands.ts';
+
+// Guard: the real CLI entrypoint must actually load + run. The other tests import command
+// functions directly, so a syntax error in cli.ts's HELP template (e.g. a stray backtick)
+// goes uncaught — this spawns `node cli.ts --help` and asserts it parses and exits cleanly.
+test('cli.ts entrypoint loads and runs (regression: HELP template must parse at module load)', () => {
+  const cliPath = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+  // `route` is offline (no model/tokens) and exits 0; loading cli.ts forces the top-level HELP
+  // template to parse, so a stray backtick (which broke the binary while unit tests stayed green)
+  // surfaces here as a non-zero exit + thrown error.
+  const out = execFileSync('node', [cliPath, 'route', '--task', 'add a --json flag'], { encoding: 'utf8' });
+  assert.match(out, /tier/i); // route rendered its classification
+});
 
 function testCtx(seed: MemorialEntry[] = []) {
   const out: string[] = [];
