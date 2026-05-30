@@ -18,11 +18,17 @@ test('testGate: green suite passes; red suite blocks (after the implementer)', a
   assert.match(r.findings![0], /red/i);
 });
 
-test('testGate: only fires for the code-producing roles (architect/memorial pass through)', async () => {
+test('testGate: default fires only after the implementer (reviewer/architect/memorial pass through)', async () => {
   const red = testGate({ run: () => false }); // would block if it ran
   assert.equal((await red(phase('architect'), cfg)).pass, true);
   assert.equal((await red(phase('memorial'), cfg)).pass, true);
-  assert.equal((await red(phase('reviewer'), cfg)).pass, false); // reviewer is in the default set
+  assert.equal((await red(phase('reviewer'), cfg)).pass, true); // reviewer is read-only → not re-checked
+  assert.equal((await red(phase('implementer'), cfg)).pass, false); // the implementer is the one gated
+});
+
+test('testGate: explicit roles can opt the reviewer back in (belt-and-suspenders)', async () => {
+  const red = testGate({ run: () => false, roles: ['implementer', 'reviewer'] });
+  assert.equal((await red(phase('reviewer'), cfg)).pass, false);
 });
 
 test('testGate: accrues confirmation on green, violation on red', async () => {
