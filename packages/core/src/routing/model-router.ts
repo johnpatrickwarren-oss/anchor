@@ -46,13 +46,15 @@ export function selectArchitectClass(directive: string, _tier: Tier): ModelClass
 // Reviewer (cost-aware): the reviewer is the most expensive role, so route its model by
 // change-risk. A load-bearing review (engine/architectural) needs opus reasoning; a clearly
 // mechanical/cosmetic change (typo, doc-only, rename) gets a cheaper Sonnet reviewer. The
-// default is opus — we only downgrade when the change is unambiguously low-risk, so review
-// quality is preserved on anything substantive.
+// scaled-down tiers (solo/implementer-only, and audit) also get Sonnet — the green-test gate
+// now backstops CORRECTNESS deterministically, so opus judgment is reserved for full-tier
+// (complex/risky) reviews where there's a separate spec + architectural surface to weigh.
 export function selectReviewerClass(directive: string, tier: Tier): ModelClass {
-  if (hit(directive, HIGH_STAKES)) return 'reasoning';                    // load-bearing -> opus
+  if (hit(directive, HIGH_STAKES)) return 'reasoning';                    // load-bearing -> opus (wins even at audit)
   if (tier === 'solo' || tier === 'implementer-only') return 'balanced';  // trivial tiers -> sonnet
+  if (tier === 'audit') return 'balanced';                                // scaled-down + gate-backstopped -> sonnet
   if (hit(directive, MECHANICAL)) return 'balanced';                      // mechanical/cosmetic/doc -> sonnet
-  return 'reasoning';                                                     // default: opus (preserve judgment)
+  return 'reasoning';                                                     // default (full tier): opus (preserve judgment)
 }
 
 // Class -> the engine's per-role override map. Returns the roles whose model is
