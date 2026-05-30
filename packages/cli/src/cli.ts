@@ -16,7 +16,7 @@ Usage:
 Tiers: full | audit | solo | implementer-only | coordinator-only
 Gates: structural (grilling/anti-scope) are advisory by default (--strict to block). The green-test gate
   runs the suite after the implementer and BLOCKS the round on red (no COMPLETE over failing tests); --no-test-gate to skip.
-  --test-cmd "<cmd>" points the gate at a faster/incremental command (default `npm test`) — the biggest gate-latency lever.
+  --test-cmd "<cmd>" points the gate at a faster/incremental command (default: npm test) — the biggest gate-latency lever.
   Remediation: on a failing gate the implementer re-runs with the findings as feedback and re-checks, up to --max-fix <n> times
   (default 2; 0 disables) — the cycle converges to green instead of stopping at the first red.
 Adaptive structure: a high-risk directive (engine/ / architectural-decision / new pattern) earns a second independent
