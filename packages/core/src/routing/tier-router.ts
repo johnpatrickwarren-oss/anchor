@@ -18,7 +18,12 @@ export interface TierClassification {
   matched: string; // the rule/marker that fired
 }
 
-const has = (s: string, re: RegExp) => re.test(s);
+// Case-INSENSITIVE marker matching: a directive may capitalize a marker ("Mechanical rename",
+// "Additive module"), and case shouldn't change the tier. Matches the model-router's /i
+// convention (they were inconsistent — the routing-accuracy harness caught it) and biases toward
+// more matches, i.e. the SAFE over-scale direction. Preserves any existing flags (e.g. /m).
+const has = (s: string, re: RegExp) =>
+  (re.flags.includes('i') ? re : new RegExp(re.source, `${re.flags}i`)).test(s);
 
 export function classifyTier(directive: string): TierClassification {
   const d = directive;
