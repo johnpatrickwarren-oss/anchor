@@ -19,9 +19,11 @@ import { ROUTING_CORPUS } from './routing-corpus.ts';
 const TIER_RANK: Record<Tier, number | null> = {
   'implementer-only': 1, solo: 1, audit: 2, full: 3, 'coordinator-only': null,
 };
-// Rough $/feature from the live runs — for the over-provisioning (wasted-cost) report.
+// Measured $/feature from the live runs (implementer-only r8, audit r7, full r3/r4) — for the
+// over-provisioning + safety-premium reports. Note how flat solo↔audit is once the reviewer is
+// sonnet: dropping roles barely saves (work relocates to the implementer).
 const TIER_COST: Record<Tier, number> = {
-  'implementer-only': 0.5, solo: 0.5, audit: 0.7, full: 2.4, 'coordinator-only': 0.3,
+  'implementer-only': 0.65, solo: 0.65, audit: 0.70, full: 2.4, 'coordinator-only': 0.3,
 };
 const MODEL_RANK: Record<ModelClass, number> = { cheap: 1, balanced: 2, reasoning: 3 };
 
@@ -93,6 +95,23 @@ test('routing accuracy — gold model classes (where specified) are not UNDER-pr
   }
   if (over.length) console.log('  model over-provision:\n    ' + over.join('\n    '));
   assert.equal(under.length, 0, `model under-provisioning vs gold:\n${under.join('\n')}`);
+});
+
+test('routing accuracy — policy vs oracle: the safety premium is small (Layer-2 grounded)', () => {
+  // Where the live oracle is known, gold (policy) may over-scale it for review/learning. Report
+  // the premium = cost(gold) - cost(oracle). The finding: it's tiny once the reviewer is sonnet,
+  // so the policy's over-scale on additive work is justified (review + memorial for ~pennies).
+  const grounded = ROUTING_CORPUS.filter((c) => c.oracleTier && c.oracleTier !== c.goldTier);
+  let premium = 0; const lines: string[] = [];
+  for (const c of grounded) {
+    const p = TIER_COST[c.goldTier] - TIER_COST[c.oracleTier!];
+    premium += p;
+    lines.push(`    ${c.id}: policy ${c.goldTier} ($${TIER_COST[c.goldTier]}) over oracle ${c.oracleTier} ($${TIER_COST[c.oracleTier!]}) = +$${p.toFixed(2)}/feature`);
+    // Sanity: the policy must never UNDER-scale the oracle (that would be a quality risk).
+    assert.ok(TIER_COST[c.goldTier] >= TIER_COST[c.oracleTier!], `${c.id}: policy under the oracle`);
+  }
+  console.log(`\n  Layer-2 oracle-grounded cases: ${grounded.length}; mean safety premium $${grounded.length ? (premium / grounded.length).toFixed(2) : '0'}/feature`);
+  for (const l of lines) console.log(l);
 });
 
 test('routing accuracy — probe watch-list (reported, not asserted; Layer-2 oracle resolves)', () => {

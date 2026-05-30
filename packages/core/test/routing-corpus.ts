@@ -18,7 +18,10 @@ import type { Tier, Role, ModelClass } from '../src/index.ts';
 export interface CorpusCase {
   id: string;
   directive: string;
-  goldTier: Tier;
+  goldTier: Tier;            // the POLICY pick — what the classifier SHOULD choose. May deliberately
+                             // over-scale the oracle for safety/learning (a justified premium).
+  oracleTier?: Tier;         // the empirically cheapest-sufficient tier (LIVE-confirmed), where known.
+                             // gold ≥ oracle; the gap is the policy's safety/learning premium.
   goldModels?: Partial<Record<Role, ModelClass>>;
   tags?: string[];
   rationale: string;
@@ -36,12 +39,15 @@ export const ROUTING_CORPUS: CorpusCase[] = [
     rationale: 'doc-only' },
 
   // ── self-contained additive → audit (no separate architect; gate + reviewer backstop) ─────
-  { id: 'add-merge', directive: 'New module merge.ts; additive, no score.ts change; pure + deterministic.', goldTier: 'audit',
-    goldModels: { reviewer: 'balanced', implementer: 'balanced' }, tags: ['oracle-derived'], rationale: 'Cairn c1: ran green at audit + sonnet reviewer' },
-  { id: 'add-topk', directive: 'Add topKWithTies; pure + deterministic; additive.', goldTier: 'audit',
-    goldModels: { reviewer: 'balanced' }, tags: ['oracle-derived'], rationale: 'Cairn c2: green at audit + sonnet' },
-  { id: 'add-rebalance', directive: 'rebalancePriors: read-only over rankCandidates; additive.', goldTier: 'audit',
-    goldModels: { reviewer: 'balanced' }, tags: ['oracle-derived'], rationale: 'Cairn c3: green at audit + sonnet' },
+  // oracleTier=implementer-only: the Layer-2 grid confirmed the implementer + green-test gate alone
+  // ships these green ($0.65/feat) — but audit ($0.70) is only ~$0.05 more and adds cold-eye review
+  // + memorial learning, so the policy (gold=audit) over-scales the oracle by a negligible premium.
+  { id: 'add-merge', directive: 'New module merge.ts; additive, no score.ts change; pure + deterministic.', goldTier: 'audit', oracleTier: 'implementer-only',
+    goldModels: { reviewer: 'balanced', implementer: 'balanced' }, tags: ['oracle-derived'], rationale: 'Cairn c1: green at audit+sonnet AND at implementer-only; audit premium ~$0.05 buys review+learning' },
+  { id: 'add-topk', directive: 'Add topKWithTies; pure + deterministic; additive.', goldTier: 'audit', oracleTier: 'implementer-only',
+    goldModels: { reviewer: 'balanced' }, tags: ['oracle-derived'], rationale: 'Cairn c2: green at audit and implementer-only' },
+  { id: 'add-rebalance', directive: 'rebalancePriors: read-only over rankCandidates; additive.', goldTier: 'audit', oracleTier: 'implementer-only',
+    goldModels: { reviewer: 'balanced' }, tags: ['oracle-derived'], rationale: 'Cairn c3: green at audit and implementer-only' },
   { id: 'add-helper', directive: 'Add a self-contained formatDuration helper; pure + deterministic.', goldTier: 'audit',
     rationale: 'self-contained additive helper' },
   { id: 'add-validation', directive: 'New additive validation module; no changes to existing code.', goldTier: 'audit',
