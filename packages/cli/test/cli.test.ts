@@ -5,10 +5,18 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MockRuntimeAdapter, MemoryPersistence, MemorialStore, JsonFilePersistence } from '@anchor/core';
+import { MockRuntimeAdapter, MemoryPersistence, MemorialStore, JsonFilePersistence, ROUTING_PROVENANCE } from '@anchor/core';
 import type { MemorialEntry } from '@anchor/core';
 import { parseArgs } from '../src/args.ts';
-import { cmdRoute, cmdRun, cmdMemorial, cmdWave } from '../src/commands.ts';
+import { cmdRoute, cmdRun, cmdMemorial, cmdWave, cmdCalibrate } from '../src/commands.ts';
+
+// Run a body with a stub ANTHROPIC_API_KEY (the drift gate skips entirely without one).
+async function withApiKey(fn: () => Promise<void>) {
+  const saved = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+  try { await fn(); } finally { if (saved === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved; }
+}
+const DRIFTED = [...ROUTING_PROVENANCE.models, 'claude-opus-5-0'];
 import type { CliContext } from '../src/commands.ts';
 
 // Guard: the real CLI entrypoint must actually load + run. The other tests import command
@@ -23,7 +31,7 @@ test('cli.ts entrypoint loads and runs (regression: HELP template must parse at 
   assert.match(out, /tier/i); // route rendered its classification
 });
 
-function testCtx(seed: MemorialEntry[] = []) {
+function testCtx(seed: MemorialEntry[] = [], models?: string[]) {
   const out: string[] = [];
   const persistence = new MemoryPersistence(seed);
   const ctx: CliContext = {
@@ -32,9 +40,56 @@ function testCtx(seed: MemorialEntry[] = []) {
     stdout: (s) => out.push(s),
     makeAdapter: () => new MockRuntimeAdapter(),
     makePersistence: () => persistence,
+    // Default: exactly the grounded models → no drift. Pass `models` to simulate a new release.
+    listModels: async () => models ?? [...ROUTING_PROVENANCE.models],
   };
   return { ctx, out };
 }
+
+test('run: model drift → conservative (safe) routing — full tier + opus everywhere', async () => {
+  await withApiKey(async () => {
+    const { ctx, out } = testCtx([], DRIFTED); // a new ungrounded model is offered
+    const r = await cmdRun({ task: 'new module merge.ts; additive, pure + deterministic', 'no-test-gate': true }, ctx);
+    assert.equal(r.result!.tier, 'full'); // would be audit without drift → over-provisioned
+    assert.ok(r.result!.phases.every((p) => p.model === 'claude-opus-4-8'));
+    assert.match(out.join('\n'), /model drift/i);
+  });
+});
+
+test('run: no model drift → normal routing (additive → audit)', async () => {
+  await withApiKey(async () => {
+    const { ctx, out } = testCtx(); // default model list == grounded → no drift
+    const r = await cmdRun({ task: 'new module merge.ts; additive, pure + deterministic', 'no-test-gate': true }, ctx);
+    assert.equal(r.result!.tier, 'audit');
+    assert.doesNotMatch(out.join('\n'), /model drift/i);
+  });
+});
+
+test('run: --no-model-check skips the drift gate even when a new model exists', async () => {
+  await withApiKey(async () => {
+    const { ctx } = testCtx([], DRIFTED);
+    const r = await cmdRun({ task: 'new module merge.ts; additive', 'no-test-gate': true, 'no-model-check': true }, ctx);
+    assert.equal(r.result!.tier, 'audit'); // not over-provisioned
+  });
+});
+
+test('calibrate: reports drift + the grounded set; exits 0', async () => {
+  await withApiKey(async () => {
+    const { ctx, out } = testCtx([], DRIFTED);
+    const r = await cmdCalibrate({}, ctx);
+    assert.equal(r.code, 0);
+    assert.match(out.join('\n'), /drift/i);
+    assert.match(out.join('\n'), /claude-opus-5-0/);
+  });
+});
+
+test('calibrate: no drift → reports current', async () => {
+  await withApiKey(async () => {
+    const { ctx, out } = testCtx();
+    await cmdCalibrate({}, ctx);
+    assert.match(out.join('\n'), /no drift/i);
+  });
+});
 
 test('parseArgs handles --flag value, --flag=value, boolean, positionals', () => {
   const { _, flags } = parseArgs(['run', '--tier', 'audit', '--task=do x', '--mock']);

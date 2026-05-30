@@ -2,7 +2,7 @@
 // @anchor/cli — entrypoint. Thin: parse argv, dispatch to a command handler, set exit code.
 
 import { parseArgs } from './args.ts';
-import { defaultContext, cmdRoute, cmdRun, cmdMemorial, cmdWave } from './commands.ts';
+import { defaultContext, cmdRoute, cmdRun, cmdMemorial, cmdWave, cmdCalibrate } from './commands.ts';
 
 const HELP = `anchor — run Anchor's disciplined role cycle on a commodity runtime
 
@@ -12,6 +12,7 @@ Usage:
   anchor wave    --plan <file> [--repo <dir> [--base <ref>]] [--concurrency <n>] [--memorial <path>]  # fan out independent cycles in parallel (--repo auto-creates a worktree+branch per item)
   anchor route   (--directive <file> | --task "<text>") [--tier <t>]      # dry-run: show classified tier + model routing
   anchor memorial <list|ratios|prune> [--memorial <path>]
+  anchor calibrate                                                       # report model drift (API models vs the grounded routing labels)
 
 Tiers: full | audit | solo | implementer-only | coordinator-only
 Gates: structural (grilling/anti-scope) are advisory by default (--strict to block). The green-test gate
@@ -25,6 +26,8 @@ Within-feature parallelism: when the Architect declares file-disjoint parts (ANC
   fans out one sub-implementer per unit concurrently, then merges — decomposing a feature instead of one serial implementer.
 Memorial: --memorial <path> injects + accrues disciplines; auto-pruned each run (--no-prune to skip).
   Injection is self-limiting: the most task-relevant rules inject (+ any live ones), capped at --max-rules (default 12; 0 = all).
+Model drift: run/wave check the API's models on startup; an ungrounded model → conservative routing (full tier + opus)
+  until re-grounded (the asymmetry makes over-provisioning the safe default). --no-model-check to skip; run "anchor calibrate" to inspect.
 --mock runs offline (no model/tokens). Real runs need ANTHROPIC_API_KEY + @anthropic-ai/claude-agent-sdk.`;
 
 export async function main(argv: string[]): Promise<number> {
@@ -37,6 +40,7 @@ export async function main(argv: string[]): Promise<number> {
     case 'wave': return (await cmdWave(flags, ctx)).code;
     case 'route': return (await cmdRoute(flags, ctx)).code;
     case 'memorial': return (await cmdMemorial(_[1] ?? '', flags, ctx)).code;
+    case 'calibrate': return (await cmdCalibrate(flags, ctx)).code;
     default: ctx.stdout(`unknown command "${cmd}"\n\n${HELP}`); return 1;
   }
 }
