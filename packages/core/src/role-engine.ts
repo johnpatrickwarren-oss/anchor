@@ -70,14 +70,16 @@ const CAVEAT =
 // failure there is structural (block, don't retry).
 const REMEDIABLE = new Set<Role>(['implementer']);
 
-// Applies to EVERY role (appended in defaultPrompt). The engine owns test verification, so no
-// role runs tests, asks the operator to, or escalates over test execution (the SDK sandbox
-// usually forbids npm/node). Global so it can't leak into a role whose obligation forgot it —
-// e.g. the memorial tripping on the injected `tests-pass` discipline and escalating for a test run.
+// Applies to EVERY role (appended in defaultPrompt). The engine owns verification and each
+// discipline is enforced by its gate + the role that produces it — so no role runs tests, asks
+// the operator to, or escalates to ask whether a discipline (tests, anti-scope, grilling, …)
+// must be satisfied first. Global + discipline-GENERAL so the class can't leak role-by-role:
+// first the memorial tripped on `tests-pass`, then on `anti-scope` in a tier with no architect.
 const ENGINE_VERIFICATION_NOTE =
-  '\n\nVERIFICATION (all roles): the engine runs the test suite and gates the round on it. Do NOT run tests, ' +
-  'ask the operator to run them, or escalate over test execution — signal your status and let the deterministic ' +
-  'gate verify (a red suite is sent back to the implementer to fix).';
+  '\n\nVERIFICATION & DISCIPLINES (all roles): the engine runs the test suite and gates the round on it, and each ' +
+  'discipline is enforced by its gate and the role that owns its output. Do your role and signal your status — do NOT ' +
+  'run tests, ask the operator to run them, or escalate to ask whether a discipline (tests, anti-scope, grilling, …) ' +
+  "must be satisfied first. A red suite is sent back to the implementer; an unmet discipline is the gate's to flag, not yours to block on.";
 
 // Role obligations — the disciplines baked into each role's instruction so the agent
 // applies them (grilling gate / anti-scope gate / anti-self-confirming gate then verify).
@@ -133,7 +135,11 @@ async function runFrom(
     const model = resolveModel(role, { manifest, overrides });
     let prompt = buildPrompt(role, config, handoff);
 
-    if (deps.memorial) {
+    // Reinforcements remind the PRODUCING roles to uphold disciplines. The memorial is a
+    // recorder (it accretes V/C from the reviewer's signals + the gate outcomes), not a
+    // producer — injecting "every spec needs anti-scope" into it just made it escalate over a
+    // discipline it can't act on. So skip the memorial.
+    if (deps.memorial && role !== 'memorial') {
       const reinforcements = await deps.memorial.applicable(config);
       if (reinforcements.length) prompt += `\n\nREINFORCEMENTS:\n- ${reinforcements.join('\n- ')}`;
     }
