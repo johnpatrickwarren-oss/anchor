@@ -184,6 +184,8 @@ node packages/cli/src/cli.ts calibrate                                          
 
 Distilled from running [DeploySignal](https://github.com/johnpatrickwarren-oss/deploysignal) — a statistically-rigorous deployment safety system for AI inference workloads — as a 4-role multi-agent project. 250+ coordination files. ~94% autonomous agent execution. Multiple production-grade bugs caught that single-agent baselines plausibly miss at 60-90% per finding (independent post-build audit confirmed). The pack codifies the disciplines that did the work.
 
+DeploySignal has since seeded a **family of sibling products** on its statistical substrate, each built or extended with Anchor: [Tessera](https://github.com/johnpatrickwarren-oss/tessera) (per-shard behavioral observation for AI clusters — 67+ cold-eye-Reviewer rounds), [Cairn](https://github.com/johnpatrickwarren-oss/cairn) (structured RCA / postmortem attribution), and [Anvil](https://github.com/johnpatrickwarren-oss/anvil) (chaos-engineering verdict layer — "a deploy gate run backward"). They *reuse* DeploySignal's detector engine, so they are substrate extensions rather than from-empty greenfield builds — DeploySignal itself remains the from-scratch proof point — but together they are the methodology's track record across a **product line**, not a single project.
+
 ## Layout
 
 ```
