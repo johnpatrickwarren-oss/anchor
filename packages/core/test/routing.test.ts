@@ -46,8 +46,9 @@ test('selectReviewerClass — cost-aware: load-bearing->reasoning, mechanical/tr
   assert.equal(selectReviewerClass('architectural-decision: new pattern', 'full'), 'reasoning');
   assert.equal(selectReviewerClass('mechanical rename', 'implementer-only'), 'balanced');         // trivial tier
   assert.equal(selectReviewerClass('documentation-only touch-up', 'audit'), 'balanced');          // mechanical kw
-  assert.equal(selectReviewerClass('add a feature', 'full'), 'reasoning');                        // default opus (substantive)
-  assert.equal(selectReviewerClass('add a feature', 'audit'), 'reasoning');
+  assert.equal(selectReviewerClass('add a feature', 'full'), 'reasoning');                        // full + substantive -> opus
+  assert.equal(selectReviewerClass('add a feature', 'audit'), 'balanced');                        // audit (scaled-down + gate-backstopped) -> sonnet
+  assert.equal(selectReviewerClass('architectural-decision', 'audit'), 'reasoning');              // but high-stakes still wins -> opus
 });
 
 test('routeRound routes the reviewer model by change-risk', () => {
