@@ -6,9 +6,10 @@ import { join, dirname, isAbsolute } from 'node:path';
 import {
   runRound, runRoundFromDirective, resumeRound, runWave, MockRuntimeAdapter, MemorialStore, MemoryPersistence, JsonFilePersistence, routeRound,
   composeGates, grillingGate, antiScopeGate, testGate, npmTestRunner, seedBuiltinDisciplines,
+  ROUTING_PROVENANCE, checkModelDrift,
 } from '@anchor/core';
 import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult, WaveItem, WaveResult } from '@anchor/core';
-import { AgentSdkAdapter } from '@anchor/runtime-agent-sdk';
+import { AgentSdkAdapter, listAvailableModels } from '@anchor/runtime-agent-sdk';
 import { str, bool } from './args.ts';
 import { createWorktrees, slug } from './worktree.ts';
 import type { WorktreeSpec } from './worktree.ts';
@@ -19,6 +20,8 @@ export interface CliContext {
   stdout: (s: string) => void;
   makeAdapter: (flags: Flags) => RuntimeAdapter;
   makePersistence: (path?: string) => MemorialPersistence;
+  // Lists the models the API currently offers (for drift detection). Injectable for tests.
+  listModels: () => Promise<string[]>;
 }
 type Flags = Record<string, string | boolean>;
 
@@ -51,6 +54,24 @@ function testCmdFrom(flags: Flags): string[] | undefined {
   return parts.length ? parts : undefined;
 }
 
+// Best-effort model-drift check on startup: if the API offers a model the routing labels were
+// never grounded against, WARN and over-provision (safe routing — full tier + opus) until the
+// oracle re-grounds. Never blocks real work: skipped on --mock / --no-model-check / no key, and
+// any failure (offline, API error) degrades to a note + normal routing. Returns the safe flag.
+async function modelDriftGate(flags: Flags, ctx: CliContext): Promise<boolean> {
+  if (bool(flags, 'mock') || bool(flags, 'no-model-check') || !process.env.ANTHROPIC_API_KEY) return false;
+  try {
+    const drift = checkModelDrift(await ctx.listModels());
+    if (!drift.drifted) return false;
+    ctx.stdout(`⚠ model drift: ${drift.newModels.join(', ')} not in the routing labels (grounded ${drift.groundedDate}). ` +
+      'Routing CONSERVATIVELY (full tier + opus) until re-grounded — run `anchor calibrate`, then the oracle grid. (--no-model-check to skip.)');
+    return true;
+  } catch (e) {
+    ctx.stdout(`note: model-drift check skipped (${(e as Error).message}); routing normally.`);
+    return false;
+  }
+}
+
 export function defaultContext(): CliContext {
   return {
     cwd: process.cwd(),
@@ -62,6 +83,7 @@ export function defaultContext(): CliContext {
       // adapter's per-role budgets apply (implementer gets the most; memorial the least).
       : new AgentSdkAdapter({ cwd: str(flags, 'cwd') ?? process.cwd(), maxTurns: str(flags, 'maxTurns') ? Number(str(flags, 'maxTurns')) : undefined, permissionMode: 'acceptEdits' }),
     makePersistence: (path) => path ? new JsonFilePersistence(path) : new MemoryPersistence(),
+    listModels: () => listAvailableModels(),
   };
 }
 
@@ -96,6 +118,28 @@ export async function cmdRoute(flags: Flags, ctx: CliContext): Promise<{ code: n
   return { code: 0, route };
 }
 
+// ── anchor calibrate ──
+// Reports model drift: the API's current models vs the set the routing labels were grounded
+// under. Read-only + cheap (no model tokens, no oracle grid). When it reports drift, the actual
+// re-grounding is the deliberate, paid step: run the oracle grid (scripts/routing-oracle.mjs)
+// against the benchmark corpus with the new model, then bump ROUTING_PROVENANCE. `anchor run`/
+// `wave` already fail SAFE (over-provision) in the meantime — this command just makes the
+// staleness explicit and tells you what to do about it.
+export async function cmdCalibrate(flags: Flags, ctx: CliContext): Promise<{ code: number }> {
+  if (!process.env.ANTHROPIC_API_KEY) { ctx.stdout('error: anchor calibrate needs ANTHROPIC_API_KEY to list models.'); return { code: 2 }; }
+  let available: string[];
+  try { available = await ctx.listModels(); }
+  catch (e) { ctx.stdout(`error: could not list models: ${(e as Error).message}`); return { code: 1 }; }
+  const drift = checkModelDrift(available);
+  ctx.stdout(`routing labels grounded ${ROUTING_PROVENANCE.groundedDate} under: ${ROUTING_PROVENANCE.models.join(', ')}`);
+  if (!drift.drifted) { ctx.stdout(`✓ no drift — all ${available.length} available model(s) are grounded. Routing labels are current.`); return { code: 0 }; }
+  ctx.stdout(`⚠ drift: ${drift.newModels.length} ungrounded model(s): ${drift.newModels.join(', ')}`);
+  ctx.stdout('  Until re-grounded, `anchor run`/`wave` route conservatively (full tier + opus) — safe, just pricier.');
+  ctx.stdout('  To re-ground: run the oracle grid (scripts/routing-oracle.mjs) on the benchmark corpus with the new model,');
+  ctx.stdout('  add its pricing, then bump ROUTING_PROVENANCE (models + groundedDate) and re-run the routing-accuracy harness.');
+  return { code: 0 };
+}
+
 // ── anchor run ──
 export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: number; result?: RunResult }> {
   if (!bool(flags, 'mock') && !process.env.ANTHROPIC_API_KEY) {
@@ -104,6 +148,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
     ctx.stdout('note: no ANTHROPIC_API_KEY — using Claude Code\'s existing auth if present (export sk-ant-… to use an API key).');
   }
   const adapter = ctx.makeAdapter(flags);
+  const safe = await modelDriftGate(flags, ctx);
   const memorialPath = str(flags, 'memorial');
   const memorial = memorialPath !== undefined ? new MemorialStore(ctx.makePersistence(memorialPath), { injectCap: injectCapFrom(flags) }) : undefined;
   if (memorial) seedBuiltinDisciplines(memorial); // ensure the discipline entries exist to accrue against
@@ -153,7 +198,7 @@ export async function cmdRun(flags: Flags, ctx: CliContext): Promise<{ code: num
   let result: RunResult;
   if (directiveFile || (str(flags, 'task') && !str(flags, 'tier'))) {
     const directive = readDirective(flags)!;
-    result = await runRoundFromDirective(directive, deps, { roundId, runDate: ctx.now(), task: str(flags, 'task'), tierOverride: str(flags, 'tier') as Tier | undefined, specPath, riskAdapt: !bool(flags, 'no-risk-adapt') });
+    result = await runRoundFromDirective(directive, deps, { roundId, runDate: ctx.now(), task: str(flags, 'task'), tierOverride: str(flags, 'tier') as Tier | undefined, specPath, riskAdapt: !bool(flags, 'no-risk-adapt'), safe });
   } else {
     const tier = (str(flags, 'tier') as Tier) || 'audit';
     const task = str(flags, 'task');
@@ -281,6 +326,7 @@ export async function cmdWave(flags: Flags, ctx: CliContext): Promise<{ code: nu
     waveId,
     runDate: ctx.now(),
     concurrency: Number(str(flags, 'concurrency')) || plan.concurrency || undefined,
+    safe: await modelDriftGate(flags, ctx),
   });
   ctx.stdout(bool(flags, 'json') ? JSON.stringify(wave, null, 2) : renderWave(wave));
   if (worktrees.length && !bool(flags, 'json')) {

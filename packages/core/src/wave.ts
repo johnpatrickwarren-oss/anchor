@@ -49,6 +49,8 @@ export interface WaveConfig {
   runDate: string;
   /** Max items running at once. Default 3 — bounds cost/load on the model + host. */
   concurrency?: number;
+  /** Model-drift fail-safe: over-provision every directive-routed item (full tier + reasoning). */
+  safe?: boolean;
 }
 
 const DEFAULT_CONCURRENCY = 3;
@@ -71,7 +73,7 @@ export async function runWave(
       const deps = depsFor(item);
       const result = item.directive !== undefined
         ? await runRoundFromDirective(item.directive, deps, {
-            roundId: item.id, runDate: config.runDate, tierOverride: item.tier, specPath: item.specPath,
+            roundId: item.id, runDate: config.runDate, tierOverride: item.tier, specPath: item.specPath, safe: config.safe,
           })
         : await runRound(
             { roundId: item.id, tier: item.tier ?? 'audit', task: item.task ?? '', runDate: config.runDate, specPath: item.specPath },
