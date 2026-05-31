@@ -11,7 +11,17 @@ test('classifyTier — priority-ordered heuristic (first match wins)', () => {
   assert.equal(classifyTier('A2 (new architectural pattern): switch middleware').tier, 'full');
   assert.equal(classifyTier('Mechanical rename + documentation-only touch-up').tier, 'implementer-only');
   assert.equal(classifyTier('methodology REINFORCEMENT consolidation').tier, 'audit');
-  assert.equal(classifyTier('Add a sortable column to the users table').tier, 'full'); // default escape hatch
+});
+
+test('classifyTier — un-marked tasks default LEAN (audit), not full; risk escalates to full', () => {
+  // The inverted default: no marker → the gate-backstopped verified loop (audit), NOT full.
+  assert.equal(classifyTier('Add a sortable column to the users table').tier, 'audit');
+  assert.equal(classifyTier('add merge').tier, 'audit');                          // terse/ambiguous → lean, not full
+  assert.equal(classifyTier('Change the merge tiebreak in merge.ts').tier, 'audit'); // contained edit → audit
+  // …but a genuine risk domain escalates to full even with no methodology marker:
+  assert.equal(classifyTier('Refactor the auth flow to support SSO').tier, 'full');   // auth risk domain
+  assert.equal(classifyTier('Add an endpoint that changes the request schema').tier, 'full'); // schema risk
+  assert.equal(classifyTier('Add a caching layer to the API client').tier, 'full');   // cross-cutting over existing code
 });
 
 test('classifyTier — self-contained additive work scales DOWN to audit (no separate architect)', () => {
@@ -52,7 +62,7 @@ test('selectReviewerClass — cost-aware: load-bearing->reasoning, mechanical/tr
 });
 
 test('routeRound routes the reviewer model by change-risk', () => {
-  assert.equal(routeRound('Add a sortable column to the users table').modelOverrides.reviewer, 'claude-opus-4-8'); // substantive -> opus
+  assert.equal(routeRound('Modify engine/detectors/fcp.ts — architectural-decision').modelOverrides.reviewer, 'claude-opus-4-8'); // high-stakes -> opus
   assert.equal(routeRound('documentation-only touch-up', { tierOverride: 'audit' }).modelOverrides.reviewer, 'claude-sonnet-4-6'); // mechanical -> sonnet
 });
 
@@ -65,7 +75,7 @@ test('selectArchitectClass — load-bearing->reasoning, mechanical->cheap, routi
 
 test('routeRound routes the architect model by change-risk (full tier only)', () => {
   assert.equal(routeRound('Modify engine/detectors/fcp.ts — architectural-decision').modelOverrides.architect, 'claude-opus-4-8'); // load-bearing
-  assert.equal(routeRound('Add a sortable column to the users table').modelOverrides.architect, 'claude-sonnet-4-6'); // routine full -> sonnet
+  assert.equal(routeRound('Add a caching layer to the API client').modelOverrides.architect, 'claude-sonnet-4-6'); // full (broad brownfield) but not opus-class -> sonnet architect
   assert.equal(routeRound('add a feature', { tierOverride: 'audit' }).modelOverrides.architect, undefined); // no architect off full tier
 });
 

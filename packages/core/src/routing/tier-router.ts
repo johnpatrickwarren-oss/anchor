@@ -11,6 +11,7 @@
 // scripts/tier-router.ts should become a thin wrapper over this to avoid two rule copies.
 
 import type { Tier } from '../types.ts';
+import { assessTask, hasRiskDomain } from './complexity.ts';
 
 export interface TierClassification {
   tier: Tier;
@@ -70,10 +71,17 @@ export function classifyTier(directive: string): TierClassification {
     (has(d, /\bself-contained\b/) && 'self-contained') ||
     (has(d, /\bread-only\b/) && 'read-only') ||
     (has(d, /\bpure\b/) && has(d, /\bdeterministic\b/) && 'pure+deterministic');
-  if (additive && !has(d, /\bESCALATE\b/) && !has(d, /\bengine\//) && !has(d, /architectural/)) {
+  // The additive down-scale must NOT fire on a risk domain — "additive" wording can't make an
+  // auth/schema/data-loss change cheap (it's the judgment, not the diff size, that's risky).
+  if (additive && !has(d, /\bESCALATE\b/) && !has(d, /\bengine\//) && !has(d, /architectural/) && !hasRiskDomain(d)) {
     return { tier: 'audit', confidence: 0.70, matched: `${additive} -> audit (no separate architect)` };
   }
 
-  // Rule 6 — default (0.50): heuristic-mode escape hatch -> full.
-  return { tier: 'full', confidence: 0.50, matched: 'default (no rule matched)' };
+  // Rule 6 — no marker matched: ASSESS the task's actual complexity/risk instead of blindly
+  // over-scaling to full. Default LEAN (audit: the gate-backstopped verified loop), escalating
+  // to full only for genuine high-risk (risk domains, or broad changes to existing code). This
+  // inverts the old "default to full" now that the green-test gate — not the role count — is
+  // the correctness backstop.
+  const a = assessTask(d);
+  return { tier: a.tier, confidence: 0.55, matched: `assessed (${a.signals.join('+')}) -> ${a.tier}` };
 }
