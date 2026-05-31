@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createWorktrees, slug, setupIntegration, commitWorktree, mergeIntoIntegration, ensureInitialCommit } from '../src/worktree.ts';
+import { createWorktrees, slug, setupIntegration, commitWorktree, mergeIntoIntegration, ensureInitialCommit, discardPaths } from '../src/worktree.ts';
 
 function tmpRepo(): string {
   const dir = mkdtempSync(join(tmpdir(), 'anchor-wt-repo-'));
@@ -72,4 +72,32 @@ test('integration branch carries an earlier stage\'s merged work into a later st
 
   // commitWorktree skips an empty (no-change) feature rather than making an empty commit.
   assert.equal(commitWorktree(s2[0].dir, 'feat(api) — nothing written'), false);
+});
+
+// Regression for the v1 merge crash: two parallel features that BOTH edit a shared root file
+// (package.json) must not conflict at merge. discardPaths reverts the protected file before
+// commit, so each feature commits only its own src; the merges then apply cleanly.
+test('two features that both edited package.json merge cleanly after discardPaths', () => {
+  const repo = tmpRepo();
+  // Seed a package.json on the base so both features "change" it.
+  writeFileSync(join(repo, 'package.json'), '{ "scripts": { "test": "node --test" } }\n');
+  execFileSync('git', ['-C', repo, 'add', '-A'], { stdio: 'ignore' });
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'add pkg'], { stdio: 'ignore' });
+
+  const root = join(repo, '.anchor', 'projects', 'P');
+  const integ = setupIntegration({ repo, base: 'HEAD', projectId: 'P', rootDir: root });
+  const wts = createWorktrees({ repo, base: integ.branch, waveId: 'P-s1', ids: ['a', 'b'], rootDir: join(root, 'stage-1') });
+
+  for (const w of wts) {
+    writeFileSync(join(w.dir, `${w.itemId}.ts`), `export const ${w.itemId} = 1;\n`);
+    writeFileSync(join(w.dir, 'package.json'), `{ "scripts": { "test": "node --test ${w.itemId}-only" } }\n`); // each rewrites it differently
+    discardPaths(w.dir, ['package.json']);   // orchestrator reverts the protected file before commit
+    assert.equal(commitWorktree(w.dir, `feat(${w.itemId})`), true);
+    assert.equal(mergeIntoIntegration(integ.dir, w.branch, `merge ${w.itemId}`), true, `merge of ${w.itemId} is clean`);
+  }
+  // Both features' src landed; package.json is the untouched base version (no conflict markers).
+  assert.ok(existsSync(join(integ.dir, 'a.ts')) && existsSync(join(integ.dir, 'b.ts')));
+  const pkg = readFileSync(join(integ.dir, 'package.json'), 'utf8');
+  assert.match(pkg, /"test": "node --test"/);
+  assert.doesNotMatch(pkg, /<<<<<<<|a-only|b-only/); // no conflict markers, no feature pollution
 });

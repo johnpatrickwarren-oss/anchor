@@ -12,7 +12,7 @@ import {
 import type { RuntimeAdapter, RunResult, Tier, MemorialPersistence, RouteResult, WaveItem, WaveResult, EngineDeps, Stage, ProjectResult } from '@anchor/core';
 import { AgentSdkAdapter, listAvailableModels } from '@anchor/runtime-agent-sdk';
 import { str, bool } from './args.ts';
-import { createWorktrees, slug, setupIntegration, commitWorktree, mergeIntoIntegration, removeWorktree } from './worktree.ts';
+import { createWorktrees, slug, setupIntegration, commitWorktree, mergeIntoIntegration, removeWorktree, discardPaths } from './worktree.ts';
 import type { WorktreeSpec } from './worktree.ts';
 
 export interface CliContext {
@@ -489,6 +489,18 @@ function featureCycleDeps(
   };
 }
 
+// Orchestrator-owned files: features must not change project config, or their independent
+// edits collide at merge (the v1 failure: each feature rewrote package.json's test script).
+// Reverted in each feature worktree before commit, so they never enter the merge.
+const PROTECTED_FILES = ['package.json', 'tsconfig.json', 'tsconfig.build.json', 'pnpm-lock.yaml', 'package-lock.json'];
+
+// Prepended to each feature's directive so the implementer stays in its lane. (Not the barrel:
+// src/index.ts may legitimately be a feature's own deliverable.)
+const FEATURE_CONSTRAINT =
+  'Scope rule: implement ONLY this feature\'s own source + test files under src/. Do NOT modify ' +
+  'package.json, tsconfig, or lockfiles — the project orchestrator owns configuration and the ' +
+  'scaffolded `npm test` already runs the suite. Do NOT edit files owned by other features.\n\n';
+
 export async function cmdProject(flags: Flags, ctx: CliContext): Promise<{ code: number; project?: ProjectResult }> {
   const directive = readDirective(flags);
   if (!directive) { ctx.stdout('error: provide --directive <file> or --task "<text>" (the project brief)'); return { code: 2 }; }
@@ -532,7 +544,7 @@ export async function cmdProject(flags: Flags, ctx: CliContext): Promise<{ code:
 
   if (mock) {
     runStage = (stage, i) => runWave(
-      stage.map((f) => ({ id: f.id, directive: f.directive })),
+      stage.map((f) => ({ id: f.id, directive: FEATURE_CONSTRAINT + f.directive })),
       () => featureCycleDeps(ctx, flags, str(flags, 'cwd'), memorial, strict, noGates, false),
       { waveId: `${projectId}-s${i + 1}`, runDate: ctx.now(), concurrency, safe },
     );
@@ -548,7 +560,7 @@ export async function cmdProject(flags: Flags, ctx: CliContext): Promise<{ code:
       catch (e) { ctx.stdout(`stage ${i + 1}: could not create worktrees — ${(e as Error).message}`); return { waveId: `${projectId}-s${i + 1}`, rounds: [], status: 'PARTIAL' }; }
       const byId = Object.fromEntries(worktrees.map((w) => [w.itemId, w]));
       const wave = await runWave(
-        stage.map((f) => ({ id: f.id, directive: f.directive, cwd: byId[f.id].dir })),
+        stage.map((f) => ({ id: f.id, directive: FEATURE_CONSTRAINT + f.directive, cwd: byId[f.id].dir })),
         (item) => featureCycleDeps(ctx, flags, item.cwd, memorial, strict, noGates, testGateOn),
         { waveId: `${projectId}-s${i + 1}`, runDate: ctx.now(), concurrency, safe },
       );
@@ -557,9 +569,12 @@ export async function cmdProject(flags: Flags, ctx: CliContext): Promise<{ code:
       if (wave.status === 'COMPLETE') {
         for (const f of stage) {
           const w = byId[f.id];
+          discardPaths(w.dir, PROTECTED_FILES); // revert any edits to orchestrator-owned config so merges can't conflict on them
           commitWorktree(w.dir, `feat(${f.id}): ${f.directive}`.slice(0, 72));
-          try { mergeIntoIntegration(integration!.dir, w.branch, `anchor: merge ${f.id}`); }
-          catch (e) { ctx.stdout(`stage ${i + 1}: merge of ${f.id} failed — ${(e as Error).message}`); return { ...wave, status: 'PARTIAL' }; }
+          if (!mergeIntoIntegration(integration!.dir, w.branch, `anchor: merge ${f.id}`)) {
+            ctx.stdout(`stage ${i + 1}: merge of ${f.id} hit an unresolved conflict — stopping (integration left clean).`);
+            return { ...wave, status: 'PARTIAL' };
+          }
         }
       }
       for (const w of worktrees) removeWorktree(repo, w.dir);
