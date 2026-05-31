@@ -48,6 +48,17 @@ export function setupIntegration(opts: { repo: string; base: string; projectId: 
   return { dir, branch };
 }
 
+/** Discard a feature worktree's edits to shared/orchestrator-owned files BEFORE committing, so
+ *  they never enter the feature's commit and can't conflict at merge. The root cause of the
+ *  v1 merge crash: every "independent" feature rewrote package.json's test script differently.
+ *  The orchestrator owns these files; features that touch them have those edits reverted. */
+export function discardPaths(dir: string, paths: string[]): void {
+  for (const p of paths) {
+    try { execFileSync('git', ['-C', dir, 'checkout', 'HEAD', '--', p], { stdio: 'ignore' }); } catch { /* path not tracked here */ }
+    try { execFileSync('git', ['-C', dir, 'clean', '-fdq', '--', p], { stdio: 'ignore' }); } catch { /* nothing to clean */ }
+  }
+}
+
 /** Stage `git add -A` + commit in a feature worktree. Returns false (skips the commit) when the
  *  feature wrote nothing, so an empty feature doesn't create an empty commit. */
 export function commitWorktree(dir: string, message: string): boolean {
@@ -62,9 +73,18 @@ export function commitWorktree(dir: string, message: string): boolean {
 }
 
 /** Merge a feature branch into the integration branch (run in the integration worktree).
- *  Stage features are file-disjoint, so this should not conflict; a conflict throws (surfaced). */
-export function mergeIntoIntegration(integDir: string, branch: string, message: string): void {
-  execFileSync('git', ['-C', integDir, ...IDENT, 'merge', '--no-ff', '--no-edit', '-m', message, branch], { stdio: ['ignore', 'pipe', 'pipe'] });
+ *  `-X ours` is a safety net: with disjoint src files there's no conflict, but if two features
+ *  still collide on a shared file (e.g. a barrel), keep integration's side rather than crash +
+ *  leave conflict markers. Returns true on a clean merge; on any failure aborts and returns false
+ *  (the caller drops that feature rather than poisoning the integration tree). */
+export function mergeIntoIntegration(integDir: string, branch: string, message: string): boolean {
+  try {
+    execFileSync('git', ['-C', integDir, ...IDENT, 'merge', '--no-ff', '--no-edit', '-X', 'ours', '-m', message, branch], { stdio: ['ignore', 'pipe', 'pipe'] });
+    return true;
+  } catch {
+    try { execFileSync('git', ['-C', integDir, 'merge', '--abort'], { stdio: 'ignore' }); } catch { /* nothing to abort */ }
+    return false;
+  }
 }
 
 /** Remove a worktree (best-effort cleanup; never throws). */
