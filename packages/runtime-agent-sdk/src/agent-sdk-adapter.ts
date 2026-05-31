@@ -25,10 +25,17 @@ export interface AgentSdkAdapterOptions {
   maxTurnsByRole?: Partial<Record<Role, number>>;
   systemPromptFor?: (role: Role) => string;
   // Transient-error resilience: retry the SDK call on retryable failures (529 Overloaded,
-  // socket close, ECONNRESET, …) with exponential backoff. Default 3 retries (4 attempts).
+  // 429 rate-limit, socket close, ECONNRESET, an idle/hung session, …) with JITTERED
+  // exponential backoff. Default 3 retries (4 attempts).
   maxRetries?: number;
-  retryBaseDelayMs?: number; // default 500; delay = base × 2^attempt, capped at 8s
+  retryBaseDelayMs?: number; // default 500; delay = base × 2^attempt (jittered), capped at 8s / 30s for rate limits
   sleep?: (ms: number) => Promise<void>; // injectable for tests (default = real timer)
+  // Hung-session watchdog: if the SDK stream produces NO message for this long, the session is
+  // treated as hung — its subprocess is aborted and the role re-runs (transient). This is the
+  // case rate-limiting actually produces: the session stalls silently instead of throwing 429.
+  // Default 180000 (3 min). 0 disables. The biggest lever against a silent stall under contention.
+  idleTimeoutMs?: number;
+  rng?: () => number; // injectable jitter source (default Math.random); de-synchronizes competing runs' retries
 }
 
 // ── Pure helpers (unit-tested) ───────────────────────────────────────────────
@@ -204,34 +211,30 @@ export class AgentSdkAdapter implements RuntimeAdapter {
     const query: QueryFn = this.opts.queryFn ?? (await import('@anthropic-ai/claude-agent-sdk' as string)).query;
     const maxRetries = this.opts.maxRetries ?? 3;
     const baseDelay = this.opts.retryBaseDelayMs ?? 500;
+    const idleTimeoutMs = this.opts.idleTimeoutMs ?? 180000;
+    const rng = this.opts.rng ?? Math.random;
     const sleep = this.opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-    // Collect the stream defensively + with bounded retry. The SDK can THROW mid-stream:
-    // on TRANSIENT failures (529 Overloaded, socket close, ECONNRESET) we retry with
-    // exponential backoff — re-running the role from scratch, since the SDK doesn't
-    // checkpoint. On non-transient throws we stop and degrade gracefully below. Either
-    // way spawnRole NEVER throws: an unguarded throw would crash the whole run and
-    // discard the per-role usage + the files the agent already wrote.
+    // Collect the stream defensively + with bounded retry. Two failure shapes are handled:
+    //   1. the SDK THROWS mid-stream (529, 429, socket drop) — caught by drainStream;
+    //   2. the session HANGS — under rate-limiting the stream stalls silently rather than
+    //      throwing, so drainStream's idle watchdog aborts it and synthesizes a transient error.
+    // Either way, transient failures retry from scratch (no SDK checkpoint) with JITTERED
+    // backoff so competing runs don't re-collide; non-transient throws degrade gracefully
+    // below. spawnRole NEVER throws — an unguarded throw would crash the run and discard the
+    // per-role usage + files already written.
     let collected: SdkMessage[] = [];
     let result: SdkResultMessage | undefined;
     let thrown: unknown;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      collected = [];
-      result = undefined;
-      thrown = undefined;
-      try {
-        for await (const message of query({ prompt: buildPrompt(spec), options: buildQueryOptions(spec, this.opts) })) {
-          collected.push(message);
-          if (message.type === 'result') result = message as SdkResultMessage;
-        }
-      } catch (e) {
-        thrown = e;
-      }
+      const ac = new AbortController();
+      const stream = query({ prompt: buildPrompt(spec), options: { ...buildQueryOptions(spec, this.opts), abortController: ac } });
+      ({ collected, result, thrown } = await drainStream(stream, idleTimeoutMs, () => ac.abort()));
       // Retry only transient errors, and only while attempts remain. maxTurns is NOT
       // transient (re-running would just re-exhaust the budget) — it falls through to
       // the resumable-escalation path below.
       if (thrown !== undefined && isTransient(thrown) && !isMaxTurns(result, thrown) && attempt < maxRetries) {
-        await sleep(Math.min(baseDelay * 2 ** attempt, 8000));
+        await sleep(backoffDelay(attempt, baseDelay, isRateLimit(thrown), rng));
         continue;
       }
       break;
@@ -317,12 +320,74 @@ export function isMaxTurns(result: SdkResultMessage | undefined, thrown: unknown
 }
 
 // True iff a thrown error is a transient server/network failure worth retrying:
-// overload (529), rate limit (429), gateway errors (502/503/504), and socket/connection
-// drops. Deliberately conservative — anything not matched is treated as terminal.
+// overload (529), rate limit (429), gateway errors (502/503/504), socket/connection drops,
+// and our own idle-timeout marker (a hung session). Conservative — anything else is terminal.
 export function isTransient(thrown: unknown): boolean {
   if (thrown === undefined || thrown === null) return false;
   const msg = (thrown instanceof Error ? thrown.message : String(thrown)).toLowerCase();
-  return /\b(429|502|503|504|529)\b/.test(msg)
+  return msg.includes(IDLE_MARKER.toLowerCase())
+    || /\b(429|502|503|504|529)\b/.test(msg)
     || /overloaded|rate.?limit|too many requests/.test(msg)
     || /socket|econnreset|econnrefused|etimedout|epipe|network|fetch failed|connection (?:closed|reset|error)|terminated/.test(msg);
+}
+
+// Rate-limit/overload errors warrant a LONGER backoff than a transient socket blip — the
+// server is telling us to slow down, so we cap higher (30s vs 8s) before retrying.
+export function isRateLimit(thrown: unknown): boolean {
+  if (thrown === undefined || thrown === null) return false;
+  const msg = (thrown instanceof Error ? thrown.message : String(thrown)).toLowerCase();
+  return /\b(429|529)\b/.test(msg) || /overloaded|rate.?limit|too many requests/.test(msg);
+}
+
+// Jittered exponential backoff. Jitter (50–100% of the exponential value) is the key bit under
+// contention: two competing runs that retried in lockstep would just re-collide; random jitter
+// de-synchronizes them. Rate limits get a higher cap (30s) than generic transient errors (8s).
+export function backoffDelay(attempt: number, baseMs: number, rateLimited: boolean, rng: () => number): number {
+  const cap = rateLimited ? 30000 : 8000;
+  const exp = Math.min(baseMs * 2 ** attempt, cap);
+  return Math.round(exp * (0.5 + rng() * 0.5));
+}
+
+// Marker embedded in the synthetic error thrown when a session goes idle (see drainStream).
+export const IDLE_MARKER = 'ANCHOR_IDLE_TIMEOUT';
+const IDLE = Symbol('idle');
+
+// Consume an SDK message stream with a HUNG-SESSION watchdog: if no message arrives for
+// `idleTimeoutMs`, abort the session (onIdle → AbortController.abort) and surface a transient
+// idle error so the caller retries from scratch. This is what rate-limiting actually causes —
+// the stream stalls silently rather than throwing — so a plain try/await would block forever.
+// `idleTimeoutMs <= 0` disables the watchdog (drain to completion). Never throws.
+export async function drainStream(
+  stream: AsyncIterable<SdkMessage>,
+  idleTimeoutMs: number,
+  onIdle?: () => void,
+): Promise<{ collected: SdkMessage[]; result?: SdkResultMessage; thrown?: unknown }> {
+  const it = stream[Symbol.asyncIterator]();
+  const collected: SdkMessage[] = [];
+  let result: SdkResultMessage | undefined;
+  let thrown: unknown;
+  try {
+    for (;;) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const step: IteratorResult<SdkMessage> | typeof IDLE = await (idleTimeoutMs > 0
+        ? Promise.race([
+            it.next(),
+            new Promise<typeof IDLE>((res) => { timer = setTimeout(() => res(IDLE), idleTimeoutMs); }),
+          ])
+        : it.next());
+      if (timer) clearTimeout(timer);
+      if (step === IDLE) {
+        onIdle?.(); // abort the hung subprocess so it can't linger (the process pileup we saw)
+        // Best-effort iterator close; do NOT await — a generator stuck in a pending await
+        // would make return() hang too. The abort above is what actually unwedges the SDK.
+        try { const p = (it.return as (() => Promise<unknown>) | undefined)?.(); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch { /* ignore */ }
+        thrown = new Error(`${IDLE_MARKER}: no output for ${idleTimeoutMs}ms (session hung)`);
+        break;
+      }
+      if (step.done) break;
+      collected.push(step.value);
+      if (step.value.type === 'result') result = step.value as SdkResultMessage;
+    }
+  } catch (e) { thrown = e; }
+  return { collected, result, thrown };
 }
