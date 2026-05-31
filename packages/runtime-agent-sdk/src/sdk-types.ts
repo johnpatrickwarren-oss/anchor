@@ -41,6 +41,8 @@ export interface SdkQueryOptions {
   cwd?: string;
   permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
   maxTurns?: number;
+  // Lets the adapter abort a hung session's underlying subprocess (idle-timeout watchdog).
+  abortController?: AbortController;
 }
 
 // The shape of the SDK's `query` we depend on (injectable for tests).

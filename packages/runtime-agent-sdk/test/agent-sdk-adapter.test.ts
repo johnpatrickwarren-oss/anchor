@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, parseMemorialSignals, parseUnits, buildQueryOptions, isMaxTurns, isTransient, resolveMaxTurns, DEFAULT_MAX_TURNS_BY_ROLE,
+  AgentSdkAdapter, mapUsage, extractArtifacts, detectStatus, parseStatusContract, parseMemorialSignals, parseUnits, buildQueryOptions, isMaxTurns, isTransient, isRateLimit, backoffDelay, drainStream, IDLE_MARKER, resolveMaxTurns, DEFAULT_MAX_TURNS_BY_ROLE,
 } from '../src/index.ts';
 import type { SdkMessage } from '../src/index.ts';
 
@@ -123,9 +123,63 @@ test('isTransient flags retryable server/network errors, not terminal ones', () 
   assert.equal(isTransient(new Error('socket connection closed unexpectedly')), true);
   assert.equal(isTransient(new Error('read ECONNRESET')), true);
   assert.equal(isTransient(new Error('429 Too Many Requests')), true);
+  assert.equal(isTransient(new Error(`${IDLE_MARKER}: no output for 180000ms (session hung)`)), true); // hung session retries
   assert.equal(isTransient(new Error('Invalid API key')), false);
   assert.equal(isTransient(new Error('Reached maximum number of turns (25)')), false);
   assert.equal(isTransient(undefined), false);
+});
+
+test('isRateLimit distinguishes throttle errors (longer backoff) from generic transient blips', () => {
+  assert.equal(isRateLimit(new Error('429 Too Many Requests')), true);
+  assert.equal(isRateLimit(new Error('rate limit exceeded')), true);
+  assert.equal(isRateLimit(new Error('529 Overloaded')), true);
+  assert.equal(isRateLimit(new Error('read ECONNRESET')), false); // transient, but not a rate limit
+});
+
+test('backoffDelay: jittered exponential, higher cap for rate limits, deterministic via injected rng', () => {
+  const rng = () => 0.5; // jitter factor → 0.5 + 0.5*0.5 = 0.75
+  // attempt 2, base 500 → exp = min(2000, cap); ×0.75
+  assert.equal(backoffDelay(2, 500, false, rng), Math.round(2000 * 0.75));
+  // rate-limited at a high attempt hits the 30s cap (vs 8s for generic transient)
+  assert.equal(backoffDelay(10, 500, true, rng), Math.round(30000 * 0.75));
+  assert.equal(backoffDelay(10, 500, false, rng), Math.round(8000 * 0.75));
+  // jitter stays within [50%, 100%] of the exponential value (attempt 1, base 1000 → exp 2000)
+  for (const r of [0, 0.3, 0.99]) {
+    const d = backoffDelay(1, 1000, false, () => r);
+    assert.ok(d >= 1000 && d <= 2000, `delay ${d} within jitter band [1000,2000]`);
+  }
+});
+
+// drainStream: the hung-session watchdog. A stalled stream must surface a transient idle error
+// (so the caller retries) and fire onIdle (so the subprocess is aborted) — NOT block forever.
+test('drainStream: a stalled stream trips the idle watchdog (transient error + abort fired)', async () => {
+  let aborted = false;
+  const hanging: AsyncIterable<SdkMessage> = { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) };
+  const { thrown, collected } = await drainStream(hanging, 25, () => { aborted = true; });
+  assert.ok(thrown instanceof Error && isTransient(thrown), 'idle error is transient (retryable)');
+  assert.match((thrown as Error).message, new RegExp(IDLE_MARKER));
+  assert.equal(aborted, true, 'onIdle fired → subprocess aborted');
+  assert.deepEqual(collected, []);
+});
+
+test('drainStream: a normal stream drains fully and captures the result (watchdog never trips)', async () => {
+  const msgs: SdkMessage[] = [
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }] } },
+    { type: 'result', subtype: 'success', usage: { output_tokens: 3 } },
+  ];
+  const { collected, result, thrown } = await drainStream(fakeQuery(msgs), 1000);
+  assert.equal(thrown, undefined);
+  assert.equal(collected.length, 2);
+  assert.equal(result?.subtype, 'success');
+});
+
+test('spawnRole: a hung session is aborted + retried, then degrades to a resumable ESCALATE (never hangs)', async () => {
+  let calls = 0;
+  const hangingQuery = () => { calls++; return { [Symbol.asyncIterator]: () => ({ next: () => new Promise<never>(() => {}) }) }; };
+  const r = await new AgentSdkAdapter({ queryFn: hangingQuery as never, sleep: noSleep, idleTimeoutMs: 20, maxRetries: 2 }).spawnRole(spec as never);
+  assert.equal(r.status, 'ESCALATE');         // bounded — does not hang the run
+  assert.match(r.escalation!.question, /hung|idle|ANCHOR_IDLE_TIMEOUT/i);
+  assert.equal(calls, 3);                      // initial + 2 retries (each tripped the watchdog)
 });
 
 test('parseMemorialSignals reads CONFIRM/VIOLATE id lists; tolerant of brackets, spacing, absence', () => {
