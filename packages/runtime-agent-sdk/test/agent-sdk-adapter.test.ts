@@ -166,6 +166,18 @@ test('spawnRole surfaces memorialSignals parsed from the role output', async () 
   assert.deepEqual(r.memorialSignals, { confirm: ['additive-replay-clean'], violate: ['no-rng'] });
 });
 
+test('spawnRole(coordinator) surfaces parsed ANCHOR-FEATURE lines as handoff.features', async () => {
+  const stream: SdkMessage[] = [
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'Plan:\nANCHOR-FEATURE [auth]: login\nANCHOR-FEATURE [api] deps=[auth]: endpoints\nANCHOR-STATUS: READY' }] } },
+    { type: 'result', subtype: 'success', usage: { input_tokens: 1, output_tokens: 2 } },
+  ];
+  const r = await new AgentSdkAdapter({ queryFn: () => fakeQuery(stream) }).spawnRole({ ...spec, role: 'coordinator' } as never);
+  assert.deepEqual((r.handoff as { features: unknown }).features, [
+    { id: 'auth', directive: 'login', dependsOn: [] },
+    { id: 'api', directive: 'endpoints', dependsOn: ['auth'] },
+  ]);
+});
+
 test('per-role turn caps: implementer gets the most, memorial the least (defaults)', () => {
   assert.equal(resolveMaxTurns('implementer', {}), DEFAULT_MAX_TURNS_BY_ROLE.implementer);
   assert.equal(resolveMaxTurns('memorial', {}), DEFAULT_MAX_TURNS_BY_ROLE.memorial);

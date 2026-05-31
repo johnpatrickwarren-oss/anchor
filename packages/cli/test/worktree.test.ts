@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createWorktrees, slug } from '../src/worktree.ts';
+import { createWorktrees, slug, setupIntegration, commitWorktree, mergeIntoIntegration, ensureInitialCommit } from '../src/worktree.ts';
 
 function tmpRepo(): string {
   const dir = mkdtempSync(join(tmpdir(), 'anchor-wt-repo-'));
@@ -40,4 +40,36 @@ test('createWorktrees makes one worktree + branch per item off the base', () => 
 test('createWorktrees throws on a non-git directory (caller surfaces a clean error)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'anchor-nogit-'));
   assert.throws(() => createWorktrees({ repo: dir, base: 'HEAD', waveId: 'W', ids: ['x'], rootDir: join(dir, 'wt') }));
+});
+
+test('ensureInitialCommit gives a freshly git-init\'d repo (no commits, no user config) a HEAD', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-fresh-'));
+  execFileSync('git', ['-C', dir, 'init', '-q', '-b', 'main'], { stdio: 'ignore' }); // no user config, no commit
+  writeFileSync(join(dir, 'package.json'), '{}');
+  assert.throws(() => execFileSync('git', ['-C', dir, 'rev-parse', '--verify', 'HEAD'], { stdio: 'ignore' }));
+  ensureInitialCommit(dir); // must not need global git identity
+  const head = execFileSync('git', ['-C', dir, 'rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' });
+  assert.match(head, /^[0-9a-f]{40}/);
+});
+
+// The cross-stage dependency-visibility mechanism: a stage-2 worktree branched off the
+// integration branch must see what a stage-1 feature committed + merged. This is the heart of
+// `anchor project`'s git orchestration, tested deterministically with no model.
+test('integration branch carries an earlier stage\'s merged work into a later stage\'s worktree', () => {
+  const repo = tmpRepo();
+  const root = join(repo, '.anchor', 'projects', 'P');
+  const integ = setupIntegration({ repo, base: 'HEAD', projectId: 'P', rootDir: root });
+
+  // Stage 1: feature "core" writes a file, commits, merges into integration.
+  const s1 = createWorktrees({ repo, base: integ.branch, waveId: 'P-s1', ids: ['core'], rootDir: join(root, 'stage-1') });
+  writeFileSync(join(s1[0].dir, 'core.js'), 'export const core = 1;\n');
+  assert.equal(commitWorktree(s1[0].dir, 'feat(core)'), true);
+  mergeIntoIntegration(integ.dir, s1[0].branch, 'merge core');
+
+  // Stage 2: feature "api" branches off the NOW-ADVANCED integration branch → sees core.js.
+  const s2 = createWorktrees({ repo, base: integ.branch, waveId: 'P-s2', ids: ['api'], rootDir: join(root, 'stage-2') });
+  assert.ok(existsSync(join(s2[0].dir, 'core.js')), 'stage-2 worktree sees stage-1\'s merged code (dependency visibility)');
+
+  // commitWorktree skips an empty (no-change) feature rather than making an empty commit.
+  assert.equal(commitWorktree(s2[0].dir, 'feat(api) — nothing written'), false);
 });

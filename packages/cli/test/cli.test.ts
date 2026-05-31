@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { MockRuntimeAdapter, MemoryPersistence, MemorialStore, JsonFilePersistence, ROUTING_PROVENANCE } from '@anchor/core';
 import type { MemorialEntry } from '@anchor/core';
 import { parseArgs } from '../src/args.ts';
-import { cmdRoute, cmdRun, cmdMemorial, cmdWave, cmdCalibrate, cmdInit } from '../src/commands.ts';
+import { cmdRoute, cmdRun, cmdMemorial, cmdWave, cmdCalibrate, cmdInit, cmdProject } from '../src/commands.ts';
 
 // Run a body with a stub ANTHROPIC_API_KEY (the drift gate skips entirely without one).
 async function withApiKey(fn: () => Promise<void>) {
@@ -142,6 +142,61 @@ test('init greenfield smoke: `npm test` is green in a freshly-initialized empty 
   const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
   const testOut = execFileSync('npm', ['test'], { cwd: dir, encoding: 'utf8', env });
   assert.match(testOut, /pass 1/); // the scaffolded smoke test passed
+});
+
+// A ctx whose adapter returns a canned project plan for the coordinator, READY otherwise.
+function projectCtx(plan: { id: string; directive: string; dependsOn: string[] }[]) {
+  const out: string[] = [];
+  const ctx: CliContext = {
+    cwd: '/tmp', now: () => '2026-05-29', stdout: (s) => out.push(s),
+    makeAdapter: () => new MockRuntimeAdapter({
+      handler: (spec) => spec.role === 'coordinator' ? { handoff: { features: plan } } : {},
+    }),
+    makePersistence: () => new MemoryPersistence(),
+    listModels: async () => [...ROUTING_PROVENANCE.models],
+  };
+  return { ctx, out };
+}
+
+test('project --dry-run decomposes into staged plan and does NOT execute', async () => {
+  const { ctx, out } = projectCtx([
+    { id: 'auth', directive: 'login', dependsOn: [] },
+    { id: 'logging', directive: 'logs', dependsOn: [] },
+    { id: 'api', directive: 'endpoints', dependsOn: ['auth'] },
+    { id: 'ui', directive: 'client', dependsOn: ['api', 'logging'] },
+  ]);
+  const r = await cmdProject({ task: 'build a small app', mock: true, 'dry-run': true }, ctx);
+  assert.equal(r.code, 0);
+  assert.equal(r.project, undefined, 'dry-run returns before execution');
+  const text = out.join('\n');
+  assert.match(text, /4 feature\(s\) in 3 stage\(s\)/);
+  assert.match(text, /stage 1 — 2 in parallel/); // auth + logging concurrent
+  assert.match(text, /ui \(after api, logging\)/);
+});
+
+test('project --mock runs features in dependency-ordered stages and reports COMPLETE', async () => {
+  const { ctx } = projectCtx([
+    { id: 'auth', directive: 'login', dependsOn: [] },
+    { id: 'api', directive: 'endpoints', dependsOn: ['auth'] },
+  ]);
+  const r = await cmdProject({ task: 'x', mock: true, 'project-id': 'P1' }, ctx);
+  assert.equal(r.code, 0);
+  assert.equal(r.project!.status, 'COMPLETE');
+  assert.equal(r.project!.stages.length, 2);                                  // auth, then api
+  assert.deepEqual(r.project!.stages[0].wave.rounds.map((x) => x.itemId), ['auth']);
+  assert.deepEqual(r.project!.stages[1].wave.rounds.map((x) => x.itemId), ['api']);
+});
+
+test('project errors (code 1) when the coordinator produces no parseable plan', async () => {
+  const { ctx, out } = projectCtx([]); // empty plan → decompose throws
+  const r = await cmdProject({ task: 'x', mock: true }, ctx);
+  assert.equal(r.code, 1);
+  assert.match(out.join('\n'), /decomposition failed/);
+});
+
+test('project with no directive/task errors (code 2)', async () => {
+  const { ctx } = projectCtx([{ id: 'a', directive: 'x', dependsOn: [] }]);
+  assert.equal((await cmdProject({ mock: true }, ctx)).code, 2);
 });
 
 test('parseArgs handles --flag value, --flag=value, boolean, positionals', () => {

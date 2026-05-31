@@ -9,6 +9,7 @@
 // `@anthropic-ai/claude-agent-sdk`. See README for the (operator-run) live verification.
 
 import type { RuntimeAdapter, RoleSpec, RoleResult, Role, Usage, RoleStatus, Escalation } from '@anchor/core';
+import { parseFeatures } from '@anchor/core';
 import type { QueryFn, SdkQueryOptions, SdkMessage, SdkUsage, SdkAssistantMessage, SdkResultMessage } from './sdk-types.ts';
 
 export interface AgentSdkAdapterOptions {
@@ -244,6 +245,11 @@ export class AgentSdkAdapter implements RuntimeAdapter {
     if (spec.role === 'architect') {
       const units = parseUnits(finalText);
       if (units.length > 1) handoff.units = units;
+    }
+    // Coordinator-declared project features → dependency-aware staged orchestration (decompose()).
+    if (spec.role === 'coordinator') {
+      const features = parseFeatures(finalText);
+      if (features.length) handoff.features = features;
     }
 
     // Turn-budget exhaustion — whether surfaced as a thrown error or an `error_max_turns`
