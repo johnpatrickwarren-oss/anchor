@@ -13,6 +13,11 @@ export type { EngineDeps, GateOutcome, MemorialPort } from './role-engine.ts';
 // Fan-out: run independent cycles concurrently (throughput).
 export { runWave } from './wave.ts';
 export type { WaveItem, WaveRoundResult, WaveResult, WaveConfig } from './wave.ts';
+// Project decomposition — Coordinator splits a project into features; dependency-aware staging.
+export { parseFeatures, planStages, renderStages } from './project/index.ts';
+export type { Feature, Stage } from './project/index.ts';
+export { decompose, runProject } from './project/run-project.ts';
+export type { DecomposeOptions, ProjectConfig, ProjectStageResult, ProjectResult } from './project/run-project.ts';
 // Phase 3 — discipline gates.
 export {
   composeGates, citationGate, antiSelfConfirmingGate, grillingGate, antiScopeGate, testGate,

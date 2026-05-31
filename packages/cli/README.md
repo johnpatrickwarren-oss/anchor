@@ -38,6 +38,10 @@ anchor run --task "add a pure formatDuration helper; additive" --cwd ./work --me
 # fan out independent features in parallel (one worktree per item; each routed on its own)
 anchor wave --plan plan.json --repo ./work --memorial ~/.anchor/memorial.json
 
+# AUTO-decompose a whole project → run features in dependency-aware stages (no hand-written plan)
+anchor project --directive PROJECT.md --repo ./work --dry-run     # show the staged plan first
+anchor project --directive PROJECT.md --repo ./work               # run it: parallel within a stage, sequenced across
+
 # model drift: is a new model out that the routing labels haven't been grounded against?
 anchor calibrate
 
@@ -54,6 +58,7 @@ anchor memorial prune             # stabilize/retire well-internalized entries
 | `anchor init` | Scaffold an empty/partial dir into a greenfield project the green-test gate can run from round 1 — `package.json` (`test` → `node --test`), a **passing smoke test** (so `npm test` is green before any code exists), `coordination/PRD.md`, `.gitignore`, `src/`, `README`. Optional `[<dir>]` positional; `--no-git`, `--force`. Idempotent — never clobbers an existing file without `--force`. |
 | `anchor run` | Run a round. `--directive <file>` or `--task "<text>"` (self-routes tier+models if no `--tier`); `--tier`, `--cwd`, `--round`, `--spec <path>`, `--memorial <path>`, `--mock`, `--strict`, `--no-gates`. Gate/loop flags: `--max-fix <n>` (remediation attempts, default 2), `--no-test-gate`, `--test-cmd "<cmd>"`, `--no-risk-adapt`, `--no-model-check`. `--resume` continues a paused round. |
 | `anchor wave` | Fan out independent items in parallel — `--plan <file>` (JSON: `{ items: [{ id, task\|directive\|directiveFile, tier?, cwd? }] }`), `--repo <dir>` (auto-creates a worktree+branch per item), `--concurrency <n>`, `--memorial <path>`. Each item self-routes; the green-test gate runs per item's worktree. |
+| `anchor project` | **Auto-decompose** a project and run it — `--directive <file>`/`--task`, `--repo <dir>` (`--base <ref>`), `--project-id`, `--concurrency`, `--memorial`, `--dry-run`, `--mock`. The Coordinator splits the brief into features + a dependency graph; independent features run **concurrently within a stage**, dependents are **sequenced** across stages, each feature **self-routing its own tier/models**. Live: one worktree per feature off an integration branch, committed + merged back per stage so later stages see earlier code. `--dry-run` prints the staged plan without running. |
 | `anchor route` | Dry-run: print the classified tier (+ confidence/matched rule) and per-role model overrides. Offline. |
 | `anchor calibrate` | Report **model drift** — the API's current models vs the set the routing labels were grounded under — and how to re-ground. Read-only (no tokens, no oracle grid). |
 | `anchor memorial <list\|ratios\|prune\|add>` | Inspect/maintain the memorial store (`--memorial <path>`). `add --id <id> --rule "<rule>" [--trigger] [--origin]` authors an entry. |

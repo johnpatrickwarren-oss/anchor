@@ -1,0 +1,11 @@
+be5ae3e anchor: merge index
+131434f feat(index): Create src/index.ts re-exporting all four utilities
+6696327 anchor: merge headline
+d5d59e4 feat(headline): Implement src/headline.ts importing titleCase then trunc
+0124cf1 anchor: merge titleCase
+9196b67 anchor: merge truncate
+65feabe feat(titleCase): Implement src/titleCase.ts (capitalize first letter of
+289989b anchor: merge slugify
+79b6345 feat(truncate): Implement src/truncate.ts (cut to n chars, append "…" wh
+dd0fd1b feat(slugify): Implement src/slugify.ts (lowercase, spaces→hyphens, stri
+9b64179 anchor: initial scaffold
