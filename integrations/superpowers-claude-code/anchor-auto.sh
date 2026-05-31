@@ -174,7 +174,10 @@ for (( i=START_IDX; i<${#ROUNDS[@]}; i++ )); do
 
   attempt=1; rc=0
   while :; do
-    if $DRY_RUN; then "$PIPELINE" --round "$rid" --dry-run; rc=$?; else "$PIPELINE" --round "$rid" --prd "$ROUND_PRD" --auto-tier; rc=$?; fi
+    # `|| rc=$?` (NOT `; rc=$?`) so `set -e` doesn't abort the loop on a non-zero round — we MUST
+    # reach the case below to retry transient failures and escalate-stop on exit 2.
+    rc=0
+    if $DRY_RUN; then "$PIPELINE" --round "$rid" --dry-run || rc=$?; else "$PIPELINE" --round "$rid" --prd "$ROUND_PRD" --auto-tier || rc=$?; fi
     case $rc in
       0) log "round $rid COMPLETE."; echo "$rid" > "$PROGRESS"; COMPLETED+=("$rid"); break ;;
       2) log "round $rid ESCALATED — stopping for operator. Resolve, then: anchor-auto.sh --resume"; exit 2 ;;
