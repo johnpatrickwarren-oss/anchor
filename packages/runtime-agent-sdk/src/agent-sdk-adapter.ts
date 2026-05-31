@@ -230,6 +230,12 @@ export class AgentSdkAdapter implements RuntimeAdapter {
       const ac = new AbortController();
       const stream = query({ prompt: buildPrompt(spec), options: { ...buildQueryOptions(spec, this.opts), abortController: ac } });
       ({ collected, result, thrown } = await drainStream(stream, idleTimeoutMs, () => ac.abort()));
+      // Tear down the session's subprocess on EVERY exit path (success, maxTurns, error) — not
+      // just idle. Without this, a session that ends via maxTurns→ESCALATE leaks its `claude`
+      // child, which keeps consuming the account's scarce concurrency and starves later sessions
+      // (observed: a leaked session stalled a concurrent run). abort() is idempotent + safe after
+      // the stream is already drained.
+      ac.abort();
       // Retry only transient errors, and only while attempts remain. maxTurns is NOT
       // transient (re-running would just re-exhaust the budget) — it falls through to
       // the resumable-escalation path below.

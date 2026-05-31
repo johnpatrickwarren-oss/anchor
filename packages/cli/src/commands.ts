@@ -165,8 +165,26 @@ test('greenfield scaffold: the test runner is wired up', () => {
 `;
 const PKG_JSON = (name: string) => JSON.stringify({
   name, version: '0.0.0', private: true, type: 'module',
-  scripts: { test: 'node --test' },
+  // `--import ./ts-resolve.mjs` lets multi-module TS written with NodeNext `./x.js` imports run
+  // under type-stripping with NO build step (the resolver maps them to the `./x.ts` sibling).
+  scripts: { test: 'node --import ./ts-resolve.mjs --test' },
 }, null, 2) + '\n';
+// In-thread module resolve hook (Node ≥24 module.registerHooks). Greenfield TS is multi-module,
+// and models naturally write NodeNext imports (`import './parser.js'` for a parser.ts). Without a
+// build step those don't resolve, breaking `node --test`. This maps a relative `.js` specifier to
+// its `.ts` sibling when that exists — keeping the scaffold build-free yet import-convention-robust.
+const TS_RESOLVE = `// Scaffolded by \`anchor init\`. Resolves NodeNext-style './x.js' imports to './x.ts' so
+// multi-module TypeScript runs under \`node --test\` with no build step. Loaded via the test script.
+import { registerHooks } from 'node:module';
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (/^\\.{1,2}\\//.test(specifier) && specifier.endsWith('.js')) {
+      try { return nextResolve(specifier.slice(0, -3) + '.ts', context); } catch { /* fall through */ }
+    }
+    return nextResolve(specifier, context);
+  },
+});
+`;
 const README_STUB = (name: string) => `# ${name}
 
 Greenfield project scaffolded by \`anchor init\`. Edit the PRD, then run a round:
@@ -184,6 +202,7 @@ export async function cmdInit(dir: string | undefined, flags: Flags, ctx: CliCon
 
   const files: Array<[string, string]> = [
     ['package.json', PKG_JSON(name)],
+    ['ts-resolve.mjs', TS_RESOLVE],
     [join('test', 'smoke.test.js'), SMOKE_TEST],
     [join('coordination', 'PRD.md'), PRD_TEMPLATE(name)],
     [join('src', '.gitkeep'), ''],
