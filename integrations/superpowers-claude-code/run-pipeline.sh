@@ -58,6 +58,20 @@ COORD="$PROJECT_ROOT/coordination"
 CROSS_MEMORIAL="$HOME/.claude/CROSS-PROJECT-MEMORIAL.md"
 LOG_DIR="$COORD/logs"
 
+# Hung-session watchdog (scripts/session-watchdog.sh, sourced for run_with_session_timeout).
+# macOS has no timeout(1), and a transient wedged `claude -p` emits a 0-byte log and never
+# returns, stalling unattended runs forever. We cap each role session's wall clock; on a
+# breach the subtree is killed and reported as exit 124 — handled below as a transient retry
+# (and, above this, re-run by anchor-auto). Default 1200s is ~1.8x the heaviest healthy
+# session observed in the SQL benchmark (opus Architect, 673s); set 0 to disable. Sourcing is
+# guarded so an older scaffold missing the script falls back to a plain pipe (see run_role).
+export ANCHOR_SESSION_TIMEOUT="${ANCHOR_SESSION_TIMEOUT:-1200}"
+export ANCHOR_WATCHDOG_POLL="${ANCHOR_WATCHDOG_POLL:-10}"
+if [[ -f "$PROJECT_ROOT/scripts/session-watchdog.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "$PROJECT_ROOT/scripts/session-watchdog.sh"
+fi
+
 ROUND="R01"
 START_AT=""
 PRD_PATH="$COORD/PRD.md"
@@ -1705,13 +1719,22 @@ EOF
     # doesn't bust the cache across workspaces. Anthropic-recommended.
     flags+=("--exclude-dynamic-system-prompt-sections")
 
-    # Run and capture exit code through tee correctly.
-    # Plain $? after a pipe captures the pipe's (tee's) exit code.
-    # PIPESTATUS[0] captures the first command's (claude's) exit code.
-    set -o pipefail
-    claude "${flags[@]}" 2>&1 | tee -a "$role_log"
-    local exit_code=${PIPESTATUS[0]}
-    set +o pipefail
+    # Run and capture claude's real exit code through the tee.
+    # Under the hung-session watchdog (when sourced + enabled), the session is
+    # capped at ANCHOR_SESSION_TIMEOUT wall-clock; a breach kills the subtree and
+    # yields exit 124, which falls through to the transient-error retry below.
+    # Fall back to a plain pipe (PIPESTATUS[0] = claude's code) if the watchdog
+    # script is absent or disabled, preserving the original behavior exactly.
+    local exit_code
+    if [[ "$ANCHOR_SESSION_TIMEOUT" != "0" ]] && type run_with_session_timeout >/dev/null 2>&1; then
+      run_with_session_timeout "$role_log" -- claude "${flags[@]}"
+      exit_code=$WATCHED_EXIT_CODE
+    else
+      set -o pipefail
+      claude "${flags[@]}" 2>&1 | tee -a "$role_log"
+      exit_code=${PIPESTATUS[0]}
+      set +o pipefail
+    fi
 
     if [[ $exit_code -eq 0 ]]; then
       log "$role completed."
