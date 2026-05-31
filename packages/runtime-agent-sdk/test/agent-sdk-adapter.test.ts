@@ -118,6 +118,19 @@ test('a genuine (non-transient) error degrades to ESCALATE without retrying (pre
   assert.equal(calls, 1);                        // non-transient → no retry
 });
 
+test('spawnRole tears down the session (aborts the subprocess) on completion — no leaked child', async () => {
+  let captured = null;
+  const stream = [
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'ANCHOR-STATUS: READY' }] } },
+    { type: 'result', subtype: 'success', usage: { input_tokens: 1, output_tokens: 2 } },
+  ];
+  const q = (args) => { captured = args.options?.abortController; return fakeQuery(stream); };
+  const r = await new AgentSdkAdapter({ queryFn: q, sleep: noSleep }).spawnRole({ ...spec } as never);
+  assert.equal(r.status, 'READY');
+  assert.ok(captured, 'an AbortController is handed to query()');
+  assert.equal(captured.signal.aborted, true, 'session subprocess aborted after completion (no concurrency leak)');
+});
+
 test('isTransient flags retryable server/network errors, not terminal ones', () => {
   assert.equal(isTransient(new Error('API Error: 529 Overloaded')), true);
   assert.equal(isTransient(new Error('socket connection closed unexpectedly')), true);

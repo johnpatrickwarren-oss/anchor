@@ -106,11 +106,11 @@ test('init scaffolds the greenfield files (package.json with a test script, pass
   const { ctx, out } = initCtx(dir);
   const r = await cmdInit(undefined, { 'no-git': true }, ctx);
   assert.equal(r.code, 0);
-  for (const f of ['package.json', 'test/smoke.test.js', 'coordination/PRD.md', 'src/.gitkeep', '.gitignore', 'README.md']) {
+  for (const f of ['package.json', 'ts-resolve.mjs', 'test/smoke.test.js', 'coordination/PRD.md', 'src/.gitkeep', '.gitignore', 'README.md']) {
     assert.ok(existsSync(join(dir, f)), `expected ${f} to be scaffolded`);
   }
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-  assert.equal(pkg.scripts.test, 'node --test'); // the gate runs `npm test` → this
+  assert.equal(pkg.scripts.test, 'node --import ./ts-resolve.mjs --test'); // gate runs `npm test`; hook resolves .js→.ts
   assert.equal(pkg.type, 'module');
   assert.match(out.join('\n'), /scaffolded greenfield project/);
 });
@@ -125,7 +125,7 @@ test('init is idempotent — existing files are skipped, not clobbered (unless -
   assert.match(out.join('\n'), /skipped.*package\.json/);
   // --force overwrites
   await cmdInit(undefined, { 'no-git': true, force: true }, ctx);
-  assert.equal(JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts.test, 'node --test');
+  assert.equal(JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts.test, 'node --import ./ts-resolve.mjs --test');
 });
 
 // The greenfield proof at the gate's resolution: after `init`, the exact command the
@@ -142,6 +142,24 @@ test('init greenfield smoke: `npm test` is green in a freshly-initialized empty 
   const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
   const testOut = execFileSync('npm', ['test'], { cwd: dir, encoding: 'utf8', env });
   assert.match(testOut, /pass 1/); // the scaffolded smoke test passed
+});
+
+// Regression for the multi-context benchmark confound: multi-module TS written with NodeNext
+// `./x.js` imports (the convention models naturally produce) must run under the scaffold's
+// no-build `npm test`. Before the ts-resolve hook, this failed with ERR_MODULE_NOT_FOUND and
+// broke BOTH benchmark arms.
+test('init scaffold resolves NodeNext .js imports to .ts siblings (no build step)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'anchor-init-nodenext-'));
+  const cliPath = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+  execFileSync('node', [cliPath, 'init', dir, '--no-git'], { encoding: 'utf8' });
+  // a 2-module TS feature importing across files with `.js` extensions (file is .ts, no build)
+  writeFileSync(join(dir, 'src', 'util.ts'), 'export const dbl = (n: number): number => n * 2;\n');
+  writeFileSync(join(dir, 'src', 'feature.ts'), "import { dbl } from './util.js';\nexport const quad = (n: number): number => dbl(dbl(n));\n");
+  writeFileSync(join(dir, 'src', 'feature.test.ts'), "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { quad } from './feature.js';\ntest('cross-module .js import resolves', () => assert.equal(quad(3), 12));\n");
+  const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
+  const out = execFileSync('npm', ['test'], { cwd: dir, encoding: 'utf8', env });
+  assert.match(out, /pass 2/);            // smoke test + the cross-module .js-import test both pass
+  assert.doesNotMatch(out, /Cannot find module/);
 });
 
 // A ctx whose adapter returns a canned project plan for the coordinator, READY otherwise.
