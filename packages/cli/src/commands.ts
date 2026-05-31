@@ -523,9 +523,13 @@ export async function cmdProject(flags: Flags, ctx: CliContext): Promise<{ code:
   let stages: Stage[];
   try { stages = planStages(features); }
   catch (e) { ctx.stdout(`error: invalid plan — ${(e as Error).message}`); return { code: 1 }; }
-  ctx.stdout(`decomposed "${projectId}" → ${features.length} feature(s) in ${stages.length} stage(s):\n${renderStages(stages)}`);
+  const json = bool(flags, 'json');
+  if (!json) ctx.stdout(`decomposed "${projectId}" → ${features.length} feature(s) in ${stages.length} stage(s):\n${renderStages(stages)}`);
 
-  if (bool(flags, 'dry-run')) return { code: 0 };
+  if (bool(flags, 'dry-run')) {
+    if (json) ctx.stdout(JSON.stringify({ projectId, features, stages }, null, 2)); // pure JSON for piping
+    return { code: 0 };
+  }
 
   // Shared memorial across the whole project (one learning loop for all features/stages).
   const memorialPath = str(flags, 'memorial');
@@ -583,8 +587,9 @@ export async function cmdProject(flags: Flags, ctx: CliContext): Promise<{ code:
   }
 
   const project = await runProject(features, runStage, { projectId });
-  ctx.stdout(bool(flags, 'json') ? JSON.stringify(project, null, 2) : renderProject(project));
-  if (integration) ctx.stdout(`integration: branch ${integration.branch} (worktree ${integration.dir}) — review / PR this; per-feature branches retained.`);
+  ctx.stdout(json ? JSON.stringify(project, null, 2) : renderProject(project));
+  // Human-only trailer — kept OUT of --json so the JSON output stays pure/pipeable.
+  if (integration && !json) ctx.stdout(`integration: branch ${integration.branch} (worktree ${integration.dir}) — review / PR this; per-feature branches retained.`);
   maybePrune(memorial, flags, ctx);
   return { code: project.status === 'COMPLETE' ? 0 : 1, project };
 }

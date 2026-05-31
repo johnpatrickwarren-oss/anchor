@@ -187,6 +187,27 @@ test('project --mock runs features in dependency-ordered stages and reports COMP
   assert.deepEqual(r.project!.stages[1].wave.rounds.map((x) => x.itemId), ['api']);
 });
 
+test('project --json emits PURE json (no human plan/integration lines leak) — parseable by a harness', async () => {
+  const { ctx, out } = projectCtx([
+    { id: 'a', directive: 'x', dependsOn: [] },
+    { id: 'b', directive: 'y', dependsOn: ['a'] },
+  ]);
+  const r = await cmdProject({ task: 'p', mock: true, json: true }, ctx);
+  assert.equal(r.code, 0);
+  const parsed = JSON.parse(out[out.length - 1]);          // last line parses cleanly on its own
+  assert.equal(parsed.status, 'COMPLETE');
+  assert.equal(parsed.stages.length, 2);
+  assert.doesNotMatch(out.join('\n'), /decomposed "|integration: branch/); // no human trailers leaked
+});
+
+test('project --dry-run --json emits the staged plan as pure json', async () => {
+  const { ctx, out } = projectCtx([{ id: 'a', directive: 'x', dependsOn: [] }]);
+  await cmdProject({ task: 'p', mock: true, 'dry-run': true, json: true }, ctx);
+  const parsed = JSON.parse(out[out.length - 1]);
+  assert.equal(parsed.features.length, 1);
+  assert.ok(Array.isArray(parsed.stages));
+});
+
 test('project errors (code 1) when the coordinator produces no parseable plan', async () => {
   const { ctx, out } = projectCtx([]); // empty plan → decompose throws
   const r = await cmdProject({ task: 'x', mock: true }, ctx);
