@@ -4,6 +4,7 @@
 // class defaults (see models.ts); only the Implementer and Memorial-Updater vary by content.
 
 import type { ModelClass, Role, Tier } from '../types.ts';
+import { hasRiskDomain } from './complexity.ts';
 
 const HIGH_STAKES = [/\bengine\//, /architectural-decision/i, /architectural-reality/i, /validation-corpus failure/i, /A1 \(new dependency\)/, /A2 \(new architectural pattern\)/, /A4 \(novel data model\)/];
 const MECHANICAL = [/\bmechanical\b/i, /\bcosmetic\b/i, /documentation-only/i, /\bdoc-only\b/i, /\btypo\b/i];
@@ -16,7 +17,9 @@ const hit = (s: string, res: RegExp[]) => res.some((re) => re.test(s));
 // (a second reviewer pass for load-bearing changes); 'normal' leaves the cycle untouched.
 export type RiskLevel = 'high' | 'normal';
 export function selectRiskLevel(directive: string): RiskLevel {
-  return hit(directive, HIGH_STAKES) ? 'high' : 'normal';
+  // High-stakes markers (engine/architectural) OR a risk domain (auth/schema/data-loss/…) earn
+  // the adaptive second cold-eye reviewer — defense in depth where a bug is expensive.
+  return hit(directive, HIGH_STAKES) || hasRiskDomain(directive) ? 'high' : 'normal';
 }
 
 // Implementer (R75): engine/architectural -> reasoning; mechanical on implementer-only -> cheap; else balanced.

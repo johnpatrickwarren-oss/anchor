@@ -17,6 +17,8 @@ export { classifyTier } from './tier-router.ts';
 export type { TierClassification } from './tier-router.ts';
 export { selectImplementerClass, selectMemorialClass, selectReviewerClass, selectArchitectClass, selectRoleModelClasses, selectRiskLevel } from './model-router.ts';
 export type { RiskLevel } from './model-router.ts';
+export { assessTask, hasRiskDomain, RISK_DOMAINS } from './complexity.ts';
+export type { Assessment } from './complexity.ts';
 
 // Adaptive structure: a high-risk directive earns a SECOND independent reviewer pass (a
 // cold-eye re-audit before the memorial accretes) — defense in depth for load-bearing

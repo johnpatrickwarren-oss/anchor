@@ -53,13 +53,16 @@ export const ROUTING_CORPUS: CorpusCase[] = [
   { id: 'add-validation', directive: 'New additive validation module; no changes to existing code.', goldTier: 'audit',
     rationale: 'new module, additive' },
 
-  // ── substantive but routine (modifies/extends existing) → full (default, safe) ────────────
-  { id: 'sub-column', directive: 'Add a sortable column to the users table.', goldTier: 'full',
-    rationale: 'touches existing UI + data path; no down-scale signal' },
+  // ── substantive but routine → LEAN by default; full only for genuine high-risk ────────────
+  // Policy (R-lean): the green-test gate backstops correctness, so an un-marked task defaults to
+  // the verified loop (audit), NOT full. Full is reserved for risk domains (auth/schema/data-loss)
+  // and broad changes to existing code. (Was: everything here defaulted to full.)
+  { id: 'sub-column', directive: 'Add a sortable column to the users table.', goldTier: 'audit',
+    rationale: 'contained change; cold-eye reviewer + green-test gate suffice — no architect, no full' },
   { id: 'sub-sso', directive: 'Refactor the auth flow to support SSO.', goldTier: 'full',
-    rationale: 'refactors existing load-bearing flow' },
+    rationale: 'risk domain (auth/SSO) + refactor of a load-bearing flow → full + 2nd reviewer' },
   { id: 'sub-cache', directive: 'Add a caching layer to the API client.', goldTier: 'full',
-    rationale: 'cross-cutting change to existing client' },
+    rationale: 'cross-cutting (caching layer) over an existing client → full; blast radius the gate won\'t bound' },
 
   // ── high-stakes / architectural → full + reasoning models ─────────────────────────────────
   { id: 'hs-engine', directive: 'Modify engine/detectors/fcp.ts.', goldTier: 'full',
@@ -97,13 +100,12 @@ export const ROUTING_CORPUS: CorpusCase[] = [
   { id: 'adv-escalate', directive: 'ESCALATE: operator decision needed on the data model.', goldTier: 'full',
     rationale: 'explicit escalation → full' },
 
-  // ── ambiguous: too terse to tell → safe default ───────────────────────────────────────────
-  { id: 'amb-terse', directive: 'add merge', goldTier: 'full',
-    tags: ['adversarial'], rationale: 'no scope signal → default to full (safe over-scale on ambiguity)' },
+  // ── ambiguous: too terse to tell → LEAN default (gate backstops) ──────────────────────────
+  { id: 'amb-terse', directive: 'add merge', goldTier: 'audit',
+    tags: ['adversarial'], rationale: 'no scope signal → lean verified loop (audit), NOT full; the green-test gate backstops, so under-scaling is cheap to recover' },
 
-  // ── probe: ideal gold the heuristic may MISS (Layer-2 oracle resolves; reported, not asserted)
-  { id: 'probe-existing-logic', directive: 'Change the merge tiebreak in merge.ts to favor recency.', goldTier: 'audit',
-    tags: ['probe'], rationale: 'small, isolated change to existing logic — arguably audit, but heuristic defaults to full (over-scale). Oracle TBD' },
-  { id: 'probe-additive-contract', directive: 'Additive endpoint that also changes the shared request schema.', goldTier: 'full',
-    tags: ['probe'], rationale: 'IDEAL=full (shared contract risk), but "additive" with no engine/ may down-scale to audit — a possible UNDER-scale to watch' },
+  { id: 'sub-existing-logic', directive: 'Change the merge tiebreak in merge.ts to favor recency.', goldTier: 'audit',
+    rationale: 'small, contained change to existing logic → the assessor lands audit (was an over-scale to full)' },
+  { id: 'add-contract-schema', directive: 'Additive endpoint that also changes the shared request schema.', goldTier: 'full',
+    rationale: 'risk domain (schema) blocks the additive down-scale → full; the assessor resolves what was an under-scale watch' },
 ];
