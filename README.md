@@ -1,5 +1,10 @@
 # anchor
 
+> ### 🔧 Looking for the architectural-invariant gate?
+> It moved to its own repo + npm package: **[johnpatrickwarren-oss/arch-gate](https://github.com/johnpatrickwarren-oss/arch-gate)** — `npm i -g @johnpatrickwarren-oss/arch-gate`.
+>
+> It enforces **human-authored architectural invariants** as a ratcheted, deterministic gate on every change — god-object/coupling, layering/dependency-direction, and no-rotting-tests checks — so AI-built codebases don't silently decay. **That's the actively-maintained, shipped tool.** This repo is the original Anchor coordination *methodology* (below) that it grew out of.
+
 **A multi-role agent orchestration discipline for high-stakes software builds, distilled from running a production-grade reference implementation as a 5-role multi-agent project.**
 
 The name comes from the **four-anchor pre-merge defense** — the structural backbone of this methodology. Each anchor is a discipline checkpoint; together they catch what single-pass review misses.
