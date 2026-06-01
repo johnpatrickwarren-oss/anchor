@@ -1,6 +1,17 @@
 # Design: the architectural-invariant gate
 
-**Status:** Draft. Refines the direction of ADR 0001 (`design/adr/0001-pivot-to-verification-harness.md`).
+**Status:** Largely BUILT — see `prototypes/architectural-gate/` (`npm test` → 10/10 suites).
+Refines the direction of ADR 0001 (`design/adr/0001-pivot-to-verification-harness.md`).
+
+> **Built so far (2026-06-01):** all 5 k10s tenets enforced; real ASTs for Go (`@ast-grep/lang-go`)
+> and TypeScript/JS (`@ast-grep/napi`) with a heuristic no-dep fallback; generic no-tuning checks
+> (`oversized_files` God-file, `max_function_lines` God-function, `module_fanin` coupling/God-module
+> hub); the full enforcement arc — ratchet vs baseline, pre-commit hook, AI-loop feedback (converge
+> /escalate, never relaxes the invariant), auditable suppressions, debt-trend over real git history;
+> a starter tenet library; `scope_diff` over dispatch labels AND top-level feature dirs. Adopted
+> onto a real codebase (the verification-harness) via the ratchet-from-current-state pattern. The §12
+> roadmap below is mostly done; remaining: richer per-language adapters, live hook adoption, broader
+> real-repo trials.
 **Date:** 2026-06-01.
 **Origin:** https://blog.k10s.dev/im-going-back-to-writing-code-by-hand/ — "AI writes features,
 not architecture." A 7-month AI-built codebase collapsed under architectural debt (god object,
