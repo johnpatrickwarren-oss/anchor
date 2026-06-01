@@ -60,13 +60,16 @@ LOG_DIR="$COORD/logs"
 
 # Hung-session watchdog (scripts/session-watchdog.sh, sourced for run_with_session_timeout).
 # macOS has no timeout(1), and a transient wedged `claude -p` emits a 0-byte log and never
-# returns, stalling unattended runs forever. We cap each role session's wall clock; on a
-# breach the subtree is killed and reported as exit 124 — handled below as a transient retry
-# (and, above this, re-run by anchor-auto). Default 1200s is ~1.8x the heaviest healthy
-# session observed in the SQL benchmark (opus Architect, 673s); set 0 to disable. Sourcing is
-# guarded so an older scaffold missing the script falls back to a plain pipe (see run_role).
-export ANCHOR_SESSION_TIMEOUT="${ANCHOR_SESSION_TIMEOUT:-1200}"
-export ANCHOR_WATCHDOG_POLL="${ANCHOR_WATCHDOG_POLL:-10}"
+# returns, stalling unattended runs forever. The kill decision is CPU-LIVENESS, not raw
+# elapsed time (a pure time cap was caught guillotining a slow-but-WORKING heavy session):
+#   • STALL (primary): no CPU progress for ANCHOR_STALL_TIMEOUT (300s) ⇒ stuck ⇒ kill fast.
+#   • HARD CAP (backstop): ANCHOR_SESSION_TIMEOUT (2700s/45min) even if CPU is still climbing.
+# A kill is exit 124 — handled below as a transient retry (and re-run by anchor-auto above).
+# Set ANCHOR_SESSION_TIMEOUT=0 to disable the watchdog entirely. Sourcing is guarded so an
+# older scaffold missing the script falls back to a plain pipe (see run_role).
+export ANCHOR_STALL_TIMEOUT="${ANCHOR_STALL_TIMEOUT:-300}"
+export ANCHOR_SESSION_TIMEOUT="${ANCHOR_SESSION_TIMEOUT:-2700}"
+export ANCHOR_WATCHDOG_POLL="${ANCHOR_WATCHDOG_POLL:-15}"
 if [[ -f "$PROJECT_ROOT/scripts/session-watchdog.sh" ]]; then
   # shellcheck source=/dev/null
   source "$PROJECT_ROOT/scripts/session-watchdog.sh"
