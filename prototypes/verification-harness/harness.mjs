@@ -32,9 +32,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = join(__dirname, 'prompts');
-// Absolute, robust resolution of the watchdog regardless of where harness.mjs lives:
+// Resolve the watchdog relative to this file (robust regardless of checkout location):
 const WATCHDOG_ABS =
-  '/Users/johnwarren/concord/anchor/integrations/superpowers-claude-code/scripts/session-watchdog.sh';
+  resolve(__dirname, '../../integrations/superpowers-claude-code/scripts/session-watchdog.sh');
 
 // The build's contracted entry module (relative to build/). The grader imports this path.
 const BUILD_ENTRY_REL = 'src/index.ts';
