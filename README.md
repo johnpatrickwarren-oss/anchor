@@ -1,7 +1,7 @@
 # anchor
 
 > ### 🔧 Looking for the architectural-invariant gate?
-> It moved to its own repo + npm package: **[johnpatrickwarren-oss/arch-gate](https://github.com/johnpatrickwarren-oss/arch-gate)** — `npm i -g @johnpatrickwarren-oss/arch-gate`.
+> It's its own repo now: **[johnpatrickwarren-oss/arch-gate](https://github.com/johnpatrickwarren-oss/arch-gate)** — install with `npm i -g github:johnpatrickwarren-oss/arch-gate`.
 >
 > It enforces **human-authored architectural invariants** as a ratcheted, deterministic gate on every change — god-object/coupling, layering/dependency-direction, and no-rotting-tests checks — so AI-built codebases don't silently decay. **That's the actively-maintained, shipped tool.** This repo is the original Anchor coordination *methodology* (below) that it grew out of.
 
