@@ -82,8 +82,8 @@ function loadDirective(path: string): { content: string; round: string } {
   return { content, round };
 }
 
-function heuristic(content: string, round: string): RouterResult {
-  // RULE 1: coordinator-only (confidence 0.90, first-match wins)
+// RULE 1: coordinator-only (confidence 0.90, first-match wins)
+function ruleCoordinator(content: string, round: string): RouterResult | null {
   const coordinatorMatches: string[] = [];
   if (/coordinator wave plan/i.test(content)) coordinatorMatches.push('Coordinator wave plan');
   if (/WAVE-GATE-\d+ close/.test(content)) coordinatorMatches.push('WAVE-GATE close');
@@ -102,8 +102,11 @@ function heuristic(content: string, round: string): RouterResult {
       mode: 'heuristic',
     };
   }
+  return null;
+}
 
-  // RULE 2: full (confidence 0.85)
+// RULE 2: full (confidence 0.85)
+function ruleFull(content: string, round: string): RouterResult | null {
   const fullMatches: string[] = [];
   if (/\bESCALATE\b/.test(content)) fullMatches.push('ESCALATE');
   if (/HALT \+ DIAGNOSTIC/.test(content)) fullMatches.push('HALT+DIAGNOSTIC');
@@ -124,8 +127,11 @@ function heuristic(content: string, round: string): RouterResult {
       mode: 'heuristic',
     };
   }
+  return null;
+}
 
-  // RULE 3: implementer-only (confidence 0.80)
+// RULE 3: implementer-only (confidence 0.80)
+function ruleImplementerOnly(content: string, round: string): RouterResult | null {
   // Count ALLOWED paths heuristically in a window after "ALLOWED".
   const allowedSection = content.match(/(?:^|\n)ALLOWED(?: modifications)?:?[\s\S]{0,3000}/i);
   let allowedPaths = 0;
@@ -153,8 +159,11 @@ function heuristic(content: string, round: string): RouterResult {
       mode: 'heuristic',
     };
   }
+  return null;
+}
 
-  // RULE 4: audit (confidence 0.75)
+// RULE 4: audit (confidence 0.75)
+function ruleAudit(content: string, round: string): RouterResult | null {
   const auditMatches: string[] = [];
   if (/\bmethodology\b/i.test(content)) auditMatches.push('methodology');
   if (/REINFORCEMENT consolidation|MR-2 Pass|re-accretion guard/i.test(content)) auditMatches.push('REINFORCEMENT consolidation');
@@ -171,8 +180,11 @@ function heuristic(content: string, round: string): RouterResult {
       mode: 'heuristic',
     };
   }
+  return null;
+}
 
-  // RULE 5: default — ambiguous directive
+// RULE 5: default — ambiguous directive
+function ruleDefault(round: string): RouterResult {
   return {
     round,
     tier: 'full',
@@ -182,6 +194,17 @@ function heuristic(content: string, round: string): RouterResult {
     router_version: ROUTER_VERSION,
     mode: 'heuristic',
   };
+}
+
+function heuristic(content: string, round: string): RouterResult {
+  // First-match wins across rules 1-4, in priority order; rule 5 is the fallback.
+  return (
+    ruleCoordinator(content, round) ??
+    ruleFull(content, round) ??
+    ruleImplementerOnly(content, round) ??
+    ruleAudit(content, round) ??
+    ruleDefault(round)
+  );
 }
 
 // Embed the Anchor tier-routing rubric for Haiku prompt construction.

@@ -113,6 +113,116 @@ function defaultContextRefs(_role: Role, _config: RoundConfig, prior: PhaseRecor
   return prior.flatMap((p) => p.artifacts);
 }
 
+// One iteration's mutable context, threaded between the extracted step helpers so each can
+// read/replace `result` and `units` exactly as the inline loop body did. Decomposition only —
+// no logic change: each helper holds a VERBATIM contiguous block from the original loop.
+interface StepCtx {
+  role: Role;
+  model: string;
+  prompt: string;
+  spec: RoleSpec;
+  t0: number;
+  result: RoleResult;
+  units: ImplUnit[] | undefined;
+}
+
+// Escalation: pause for the operator, then resume the SAME role once with the answer. Returns
+// a terminal RunResult to bubble out of runFrom (PAUSED), or undefined to continue the loop
+// with ctx.result updated. (Verbatim from the original loop body.)
+async function handleEscalation(
+  ctx: StepCtx, phases: PhaseRecord[], warnings: string[], config: RoundConfig, deps: EngineDeps, clock: () => number,
+): Promise<RunResult | undefined> {
+  const { role, model, prompt, spec, t0 } = ctx;
+  let result = ctx.result;
+  if (result.status === 'ESCALATE' && result.escalation) {
+    if (!deps.onEscalate) {
+      phases.push(toPhase(result, model, clock() - t0));
+      return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, warnings, CAVEAT };
+    }
+    const resolution = await deps.onEscalate(result.escalation);
+    const resumedPrompt = `${prompt}\n\nOPERATOR RESOLUTION: ${resolution.answer}`;
+    result = await deps.adapter.spawnRole({ ...spec, prompt: resumedPrompt });
+    if (result.status === 'ESCALATE') {
+      // Escalated again after resolution — do not loop; surface as paused.
+      phases.push(toPhase(result, model, clock() - t0));
+      return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, warnings, CAVEAT };
+    }
+  }
+  ctx.result = result;
+  return undefined;
+}
+
+// Discipline gates. Findings always surface (as warnings); a non-pass halts the run —
+// UNLESS the role is auto-remediable, in which case it re-runs with the findings as
+// feedback and re-checks, up to maxFixAttempts, converging to green instead of stopping
+// at the first red. This is the fix-and-reverify loop the dynamic-workflow comparison
+// exposed: the workflow iterated to green; Anchor used to stop at the first failure.
+// Returns a terminal RunResult (BLOCKED) or undefined to continue. (Verbatim from the loop.)
+async function runGates(
+  ctx: StepCtx, phases: PhaseRecord[], warnings: string[], config: RoundConfig, deps: EngineDeps, clock: () => number,
+): Promise<RunResult | undefined> {
+  const { role, model, prompt, spec } = ctx;
+  let result = ctx.result;
+  if (deps.gates) {
+    let outcome = await deps.gates(result, config);
+    const maxFix = deps.maxFixAttempts ?? 2;
+    let fixAttempt = 0;
+    while (!outcome.pass && REMEDIABLE.has(role) && result.status === 'READY' && fixAttempt < maxFix) {
+      fixAttempt++;
+      const findings = outcome.findings ?? [];
+      const fixPrompt = `${prompt}\n\nREMEDIATION (attempt ${fixAttempt}/${maxFix}) — these gate checks FAILED and MUST be fixed before the round can complete:\n- ${findings.join('\n- ')}\nFix them without regressing passing work, then re-verify.`;
+      const fixT0 = clock();
+      result = await deps.adapter.spawnRole({ ...spec, prompt: fixPrompt });
+      phases.push(toPhase(result, model, clock() - fixT0));
+      if (result.status !== 'READY') break; // a fix that escalates/blocks falls through to the block below
+      outcome = await deps.gates(result, config);
+    }
+    if (outcome.findings) warnings.push(...outcome.findings.map((f) => `${role}: ${f}`));
+    if (!outcome.pass) {
+      if (deps.memorial) await deps.memorial.record('violation', { role, findings: outcome.findings });
+      return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
+    }
+    if (deps.memorial) await deps.memorial.record('confirmation', { role });
+  }
+  ctx.result = result;
+  return undefined;
+}
+
+// Post-gate accrual + decomposition capture. Reviewer-driven memorial accrual and the
+// Architect's declared-units capture (which updates ctx.units for the upcoming implementer).
+// (Verbatim from the loop body — no terminal return; mutates ctx.)
+async function accrueAndCapture(ctx: StepCtx, config: RoundConfig, deps: EngineDeps): Promise<void> {
+  const { role, result } = ctx;
+  // Reviewer-driven accrual (the learning loop for ANY discipline, not just the built-in
+  // gates). Only the REVIEWER's signals accrue — it is the cold-eye judge, so an
+  // architect/implementer self-report is advisory, not authoritative (prevents one round
+  // double/triple-counting a discipline). Disciplines a gate already owns this round are
+  // skipped (no gate+signal double), and a violation wins over a confirmation. record()
+  // tolerates unknown ids, so a hallucinated id is ignored rather than crashing the run.
+  if (role === 'reviewer' && deps.memorial && result.memorialSignals) {
+    const gateOwned = new Set(deps.gateOwnedMemorialIds ?? []);
+    const violated = result.memorialSignals.violate.filter((id) => !gateOwned.has(id));
+    const violatedSet = new Set(violated);
+    for (const id of violated) await deps.memorial.record('violation', { memorialId: id, date: config.runDate });
+    for (const id of result.memorialSignals.confirm) {
+      if (gateOwned.has(id) || violatedSet.has(id)) continue;
+      await deps.memorial.record('confirmation', { memorialId: id, date: config.runDate });
+    }
+  }
+
+  // The Architect is the decomposition role: capture any independent units it declared so
+  // the upcoming implementer can fan out across them. Validated (id + scope strings).
+  if (role === 'architect') {
+    const declared = (result.handoff as Record<string, unknown>)?.units;
+    if (Array.isArray(declared)) {
+      const valid = declared.filter(
+        (u): u is ImplUnit => !!u && typeof (u as ImplUnit).id === 'string' && typeof (u as ImplUnit).scope === 'string',
+      );
+      if (valid.length) ctx.units = valid;
+    }
+  }
+}
+
 async function runFrom(
   roles: Role[],
   startIndex: number,
@@ -148,89 +258,28 @@ async function runFrom(
     // Fan out the implementer across independent units (≥2) — one sub-implementer per unit,
     // run concurrently, then merged. A single/no unit runs the normal serial implementer.
     const t0 = clock();
-    let result = (role === 'implementer' && units && units.length > 1)
+    const result = (role === 'implementer' && units && units.length > 1)
       ? await fanOutImplementers(units, spec, prompt, deps.adapter)
       : await deps.adapter.spawnRole(spec);
 
-    // Escalation: pause for the operator, then resume the SAME role once with the answer.
-    if (result.status === 'ESCALATE' && result.escalation) {
-      if (!deps.onEscalate) {
-        phases.push(toPhase(result, model, clock() - t0));
-        return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, warnings, CAVEAT };
-      }
-      const resolution = await deps.onEscalate(result.escalation);
-      const resumedPrompt = `${prompt}\n\nOPERATOR RESOLUTION: ${resolution.answer}`;
-      result = await deps.adapter.spawnRole({ ...spec, prompt: resumedPrompt });
-      if (result.status === 'ESCALATE') {
-        // Escalated again after resolution — do not loop; surface as paused.
-        phases.push(toPhase(result, model, clock() - t0));
-        return { roundId: config.roundId, tier: config.tier, status: 'PAUSED', phases, pausedAt: role, escalation: result.escalation, warnings, CAVEAT };
-      }
-    }
+    const ctx: StepCtx = { role, model, prompt, spec, t0, result, units };
 
-    phases.push(toPhase(result, model, clock() - t0));
+    const escalated = await handleEscalation(ctx, phases, warnings, config, deps, clock);
+    if (escalated) return escalated;
 
-    if (result.status === 'BLOCKED') {
+    phases.push(toPhase(ctx.result, model, clock() - t0));
+
+    if (ctx.result.status === 'BLOCKED') {
       return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
     }
 
-    // Discipline gates. Findings always surface (as warnings); a non-pass halts the run —
-    // UNLESS the role is auto-remediable, in which case it re-runs with the findings as
-    // feedback and re-checks, up to maxFixAttempts, converging to green instead of stopping
-    // at the first red. This is the fix-and-reverify loop the dynamic-workflow comparison
-    // exposed: the workflow iterated to green; Anchor used to stop at the first failure.
-    if (deps.gates) {
-      let outcome = await deps.gates(result, config);
-      const maxFix = deps.maxFixAttempts ?? 2;
-      let fixAttempt = 0;
-      while (!outcome.pass && REMEDIABLE.has(role) && result.status === 'READY' && fixAttempt < maxFix) {
-        fixAttempt++;
-        const findings = outcome.findings ?? [];
-        const fixPrompt = `${prompt}\n\nREMEDIATION (attempt ${fixAttempt}/${maxFix}) — these gate checks FAILED and MUST be fixed before the round can complete:\n- ${findings.join('\n- ')}\nFix them without regressing passing work, then re-verify.`;
-        const fixT0 = clock();
-        result = await deps.adapter.spawnRole({ ...spec, prompt: fixPrompt });
-        phases.push(toPhase(result, model, clock() - fixT0));
-        if (result.status !== 'READY') break; // a fix that escalates/blocks falls through to the block below
-        outcome = await deps.gates(result, config);
-      }
-      if (outcome.findings) warnings.push(...outcome.findings.map((f) => `${role}: ${f}`));
-      if (!outcome.pass) {
-        if (deps.memorial) await deps.memorial.record('violation', { role, findings: outcome.findings });
-        return { roundId: config.roundId, tier: config.tier, status: 'BLOCKED', phases, pausedAt: role, warnings, CAVEAT };
-      }
-      if (deps.memorial) await deps.memorial.record('confirmation', { role });
-    }
+    const blocked = await runGates(ctx, phases, warnings, config, deps, clock);
+    if (blocked) return blocked;
 
-    // Reviewer-driven accrual (the learning loop for ANY discipline, not just the built-in
-    // gates). Only the REVIEWER's signals accrue — it is the cold-eye judge, so an
-    // architect/implementer self-report is advisory, not authoritative (prevents one round
-    // double/triple-counting a discipline). Disciplines a gate already owns this round are
-    // skipped (no gate+signal double), and a violation wins over a confirmation. record()
-    // tolerates unknown ids, so a hallucinated id is ignored rather than crashing the run.
-    if (role === 'reviewer' && deps.memorial && result.memorialSignals) {
-      const gateOwned = new Set(deps.gateOwnedMemorialIds ?? []);
-      const violated = result.memorialSignals.violate.filter((id) => !gateOwned.has(id));
-      const violatedSet = new Set(violated);
-      for (const id of violated) await deps.memorial.record('violation', { memorialId: id, date: config.runDate });
-      for (const id of result.memorialSignals.confirm) {
-        if (gateOwned.has(id) || violatedSet.has(id)) continue;
-        await deps.memorial.record('confirmation', { memorialId: id, date: config.runDate });
-      }
-    }
+    await accrueAndCapture(ctx, config, deps);
+    units = ctx.units;
 
-    // The Architect is the decomposition role: capture any independent units it declared so
-    // the upcoming implementer can fan out across them. Validated (id + scope strings).
-    if (role === 'architect') {
-      const declared = (result.handoff as Record<string, unknown>)?.units;
-      if (Array.isArray(declared)) {
-        const valid = declared.filter(
-          (u): u is ImplUnit => !!u && typeof (u as ImplUnit).id === 'string' && typeof (u as ImplUnit).scope === 'string',
-        );
-        if (valid.length) units = valid;
-      }
-    }
-
-    handoff[role] = result.handoff;
+    handoff[role] = ctx.result.handoff;
   }
 
   return { roundId: config.roundId, tier: config.tier, status: 'COMPLETE', phases, warnings, CAVEAT };
