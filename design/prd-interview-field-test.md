@@ -1,6 +1,6 @@
 # Field test — validating the unit-property question set (13 → 7)
 
-*Provenance for the Tier-2 question set in [`../PRD-INTERVIEW.md`](../PRD-INTERVIEW.md). Tests
+*Provenance for the question set in [`../PRD-INTERVIEW.md`](../PRD-INTERVIEW.md). Tests
 whether the question-driven interview actually elicits good properties, and which questions earn
 their place. Operator answers are written as a real (non-expert) operator would; properties are what
 a model would draft from those answers; every property would still pass through `arch property`
@@ -118,7 +118,7 @@ Across N=norm, G=globRe, C=config:
 5. **Q2 never produced a property** — only scope notes. Merge into the domain question.
 
 ### Result — 7 questions (from 13)
-The reduction shipped as the Tier-2 set in [`../PRD-INTERVIEW.md`](../PRD-INTERVIEW.md): Contract ·
+The reduction shipped as the question set in [`../PRD-INTERVIEW.md`](../PRD-INTERVIEW.md): Contract ·
 Must-never (moved up) · Domain & refusal (Q3+Q4+Q2) · Output-is-always (Q5) · Relations cluster
 (Q6–Q10) · Reference (Q11, prompted) · Examples & worry (Q13). The questionnaire *works*: on three
 unrelated real functions it reconstructed strong, testable invariants — including, for the
