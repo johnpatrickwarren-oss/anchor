@@ -1,84 +1,51 @@
 # Contributing to Anchor
 
-Thanks for your interest. Anchor is a coordination methodology pack for multi-agent software development — a standalone framework extracted from the worked example at [github.com/johnpatrickwarren-oss/deploysignal](https://github.com/johnpatrickwarren-oss/deploysignal).
+Thanks for your interest. Anchor is the **behavioral half** of a two-part code-quality stack: a
+small set of disciplines that still beat a strong base model's defaults, paired with
+[sprag](https://github.com/johnpatrickwarren-oss/sprag) (the deterministic gate). The substance
+is one file: [`DISCIPLINES.md`](DISCIPLINES.md).
 
-Contributions welcome. Slower response times than active OSS projects (single maintainer; portfolio reference posture).
+Single maintainer; slower response times than active OSS projects.
 
 ## What this is
 
-A discipline framework with four core practices:
+A deliberately short list of behavioral disciplines, each of which must pass **both** sieves:
 
-- **Pre-emit grilling** — adversarial review of routing artifacts before they leave the originating role
-- **Memorial accretion** — sub-instance accumulation within stable class characters; prevents inflation while preserving precision
-- **Audit-trail file discipline** — disposition + diagnostic + spec files commit alongside implementation; canonical-trail integrity preserved
-- **Role anchoring** — bounded scope per role; cross-role routing via explicit pasteable handoffs
-
-Plus templates (PROJECT-ROLES, SPEC-TEMPLATE, ANTI-SCOPE-LEDGER, DISCIPLINE-REFERENCE) and case-study material from the deploysignal worked example.
-
-Framework-agnostic — works with CrewAI, LangGraph, Claude Code, custom multi-agent orchestrators, and human-only teams.
+1. **It can't be made deterministic** — else it belongs in sprag as an invariant, not here as prose.
+2. **It still beats the base model's default** — else it's ceremony a strong model doesn't need.
 
 ## What this is NOT
 
-- **Not a code library** — no runtime to install; no API surface
-- **Not a methodology religion** — disciplines are tools; adopt what fits your context
-- **Not Agile/Scrum/SAFe** — different lineage; complementary if you want to combine
-- **Not specific to any vendor / platform** — agent framework agnostic by design
+- **Not a code library** — no runtime, no API surface.
+- **Not the orchestrator** — the original five/six-role build-orchestration methodology and the
+  `@anchor/*` tool are retired and archived, unmaintained, in [`legacy/`](legacy/). New
+  contributions should target the behavioral pack, not the archive.
+- **Not platform-specific** — the disciplines are model- and runtime-agnostic.
 
-## How to use anchor
+## The most valuable contributions
 
-Read `METHODOLOGY.md` for the framework overview. Pick templates that fit your project; adapt; deploy. The DeploySignal worked example shows what full adoption looks like at small scale.
+- **Half-life evidence.** Anchor's central claim is that each discipline beats the bare model
+  default. If you can show — with a concrete before/after — that a current model *already* does one
+  of these unprompted, that's grounds to retire the entry. This is the highest-value contribution:
+  it keeps the pack from rotting into overhead.
+- **A new incentive-fighting discipline.** Propose one only with: the structural incentive it
+  fights (sycophancy, eagerness-to-finish, tunnel-vision, favorable framing, …), why it can't be a
+  sprag gate (sieve 1), why a strong model won't do it unprompted (sieve 2), and a worked example.
+- **Sharper phrasing or a better worked example** for an existing discipline.
 
 ## Submitting changes
 
-### Issues
-
-File issues for:
-
-- Methodology questions or clarification needs
-- Template improvements
-- New discipline candidates from your adoption experience
-- Documentation errors
-
-Please include:
-
-- Context (multi-agent setup, project scale, team shape)
-- Specific question or proposed change
-- What you tried that didn't work (for adoption questions)
-
-### Pull requests
-
-PRs welcome for:
-
-- Template improvements (clarity, completeness, framing)
-- New case studies (your project's adoption experience; with retrospective on what worked vs didn't)
-- New skill / discipline contributions (must include rationale + case-study evidence)
-- Documentation improvements
-
-Larger framework changes (new core discipline, methodology restructure): file an issue first to discuss before opening a PR.
+File an issue first for anything structural (adding/removing a discipline). For phrasing,
+examples, and half-life evidence, open a PR directly.
 
 PR checklist:
 
-- [ ] Templates render cleanly (Markdown formatting consistent with existing patterns)
-- [ ] New disciplines include rationale + at least one concrete case study
-- [ ] No vendor-specific framing (anchor is platform-agnostic)
-- [ ] PR description explains the change
-
-### Style
-
-Markdown for prose; code blocks as needed. Voice: direct, technical, unhedged but not overclaiming.
-
-## Maintainer response
-
-Single-maintainer reference repo. Expect:
-
-- Issue triage: ~1 week
-- PR review: ~1-2 weeks
-- Major framework changes: longer; require discussion before review
-
-## Code of conduct
-
-Standard expectations: be respectful; methodology disagreement welcome; personal attacks aren't.
+- [ ] The change keeps `DISCIPLINES.md` short — additions justify their length against both sieves.
+- [ ] A new discipline names the incentive it fights and includes a concrete example.
+- [ ] Claims are precise and not overclaimed (evidence is labeled as such; N=1 is called N=1).
+- [ ] Markdown renders cleanly.
 
 ## License
 
-By contributing, you agree your contributions are licensed under the Apache License 2.0 (see `LICENSE`).
+By contributing, you agree your contributions are licensed under the Apache License 2.0 (see
+[`LICENSE`](LICENSE)).
