@@ -26,62 +26,103 @@ export interface TierClassification {
 const has = (s: string, re: RegExp) =>
   (re.flags.includes('i') ? re : new RegExp(re.source, `${re.flags}i`)).test(s);
 
-export function classifyTier(directive: string): TierClassification {
-  const d = directive;
+// Returns the label of the FIRST matching marker (first-match wins, same order as the table),
+// or null if none match. Each entry is [predicate, label]; this is the data-driven equivalent of
+// a `(has(d, A) && 'a') || (has(d, B) && 'b') || ...` short-circuit chain, kept as a loop so the
+// per-rule cyclomatic complexity stays low while the matched string is byte-identical.
+const firstMarker = (d: string, table: ReadonlyArray<readonly [(s: string) => boolean, string]>): string | null => {
+  for (const [test, label] of table) if (test(d)) return label;
+  return null;
+};
 
-  // Rule 1 — coordinator-only (0.90)
+// Rule 1 — coordinator-only (0.90)
+function ruleCoordinator(d: string): TierClassification | null {
   if (has(d, /Coordinator wave plan/) || has(d, /WAVE-GATE-\w+ close/) || has(d, /CLUSTER-HANDOFF/) ||
       has(d, /operator-decision backlog/) || has(d, /^\s*\(Coordinator —/m) || has(d, /--coordinator\b/)) {
     return { tier: 'coordinator-only', confidence: 0.90, matched: 'coordinator-only marker' };
   }
+  return null;
+}
 
-  // Rule 2 — full (0.85)
-  const fullMarker =
-    (has(d, /\bESCALATE\b/) && 'ESCALATE') ||
-    (has(d, /HALT \+ DIAGNOSTIC/) && 'HALT + DIAGNOSTIC') ||
-    (has(d, /architectural-decision|architectural-reality/) && 'architectural-decision/reality') ||
-    (has(d, /R61-class/) && 'R61-class') ||
-    (has(d, /validation-corpus failure/) && 'validation-corpus failure') ||
-    (has(d, /\bengine\//) && 'engine/ path') ||
-    (has(d, /--tier full\b/) && '--tier full') ||
-    (has(d, /A1 \(new dependency\)|A2 \(new architectural pattern\)|A4 \(novel data model\)/) && 'A-factor');
+// Rule 2 — full (0.85)
+const FULL_MARKERS: ReadonlyArray<readonly [(s: string) => boolean, string]> = [
+  [(d) => has(d, /\bESCALATE\b/), 'ESCALATE'],
+  [(d) => has(d, /HALT \+ DIAGNOSTIC/), 'HALT + DIAGNOSTIC'],
+  [(d) => has(d, /architectural-decision|architectural-reality/), 'architectural-decision/reality'],
+  [(d) => has(d, /R61-class/), 'R61-class'],
+  [(d) => has(d, /validation-corpus failure/), 'validation-corpus failure'],
+  [(d) => has(d, /\bengine\//), 'engine/ path'],
+  [(d) => has(d, /--tier full\b/), '--tier full'],
+  [(d) => has(d, /A1 \(new dependency\)|A2 \(new architectural pattern\)|A4 \(novel data model\)/), 'A-factor'],
+];
+function ruleFull(d: string): TierClassification | null {
+  const fullMarker = firstMarker(d, FULL_MARKERS);
   if (fullMarker) return { tier: 'full', confidence: 0.85, matched: fullMarker };
+  return null;
+}
 
-  // Rule 3 — implementer-only (0.80): mechanical/doc/cosmetic AND no escalation/engine/arch markers.
-  // (Simplification: the production rule also requires ALLOWED_SET ≤ 3 paths; omitted here.)
+// Rule 3 — implementer-only (0.80): mechanical/doc/cosmetic AND no escalation/engine/arch markers.
+// (Simplification: the production rule also requires ALLOWED_SET ≤ 3 paths; omitted here.)
+function ruleImplementerOnly(d: string): TierClassification | null {
   if (has(d, /\bmechanical\b|\bcosmetic\b|documentation-only|\bdoc-only\b|\btypo\b/) &&
       !has(d, /\bESCALATE\b|\bDIAGNOSTIC\b|\bengine\/|architectural-decision/)) {
     return { tier: 'implementer-only', confidence: 0.80, matched: 'mechanical/doc/cosmetic' };
   }
+  return null;
+}
 
-  // Rule 4 — audit (0.75): methodology/consolidation passes.
+// Rule 4 — audit (0.75): methodology/consolidation passes.
+function ruleAudit(d: string): TierClassification | null {
   if (has(d, /\bmethodology\b/) || has(d, /REINFORCEMENT consolidation/) || has(d, /\bMR-\d+ Pass\b/) ||
       has(d, /re-accretion guard/) || has(d, /--tier audit\b/) || has(d, /audit-tier/)) {
     return { tier: 'audit', confidence: 0.75, matched: 'audit marker' };
   }
+  return null;
+}
 
-  // Rule 5 — audit (0.70): a SELF-CONTAINED ADDITIVE change (new module / additive / pure+
-  // deterministic / read-only) with no high-stakes markers needs review but NOT a separate
-  // cold-eye architect — the Implementer self-specs from the directive, the Reviewer + green-
-  // test gate backstop it. This is "the scope decides it doesn't need the architect": it drops
-  // the biggest wall-driver (the architect ~37%) for work that doesn't warrant a separate spec.
-  const additive =
-    (has(d, /\badditive\b/) && 'additive') ||
-    (has(d, /\bnew module\b/) && 'new module') ||
-    (has(d, /\bself-contained\b/) && 'self-contained') ||
-    (has(d, /\bread-only\b/) && 'read-only') ||
-    (has(d, /\bpure\b/) && has(d, /\bdeterministic\b/) && 'pure+deterministic');
-  // The additive down-scale must NOT fire on a risk domain — "additive" wording can't make an
-  // auth/schema/data-loss change cheap (it's the judgment, not the diff size, that's risky).
-  if (additive && !has(d, /\bESCALATE\b/) && !has(d, /\bengine\//) && !has(d, /architectural/) && !hasRiskDomain(d)) {
+// Rule 5 — audit (0.70): a SELF-CONTAINED ADDITIVE change (new module / additive / pure+
+// deterministic / read-only) with no high-stakes markers needs review but NOT a separate
+// cold-eye architect — the Implementer self-specs from the directive, the Reviewer + green-
+// test gate backstop it. This is "the scope decides it doesn't need the architect": it drops
+// the biggest wall-driver (the architect ~37%) for work that doesn't warrant a separate spec.
+const ADDITIVE_MARKERS: ReadonlyArray<readonly [(s: string) => boolean, string]> = [
+  [(d) => has(d, /\badditive\b/), 'additive'],
+  [(d) => has(d, /\bnew module\b/), 'new module'],
+  [(d) => has(d, /\bself-contained\b/), 'self-contained'],
+  [(d) => has(d, /\bread-only\b/), 'read-only'],
+  [(d) => has(d, /\bpure\b/) && has(d, /\bdeterministic\b/), 'pure+deterministic'],
+];
+// The additive down-scale must NOT fire on a risk domain — "additive" wording can't make an
+// auth/schema/data-loss change cheap (it's the judgment, not the diff size, that's risky).
+const additiveBlocked = (d: string): boolean =>
+  has(d, /\bESCALATE\b/) || has(d, /\bengine\//) || has(d, /architectural/) || hasRiskDomain(d);
+function ruleAdditive(d: string): TierClassification | null {
+  const additive = firstMarker(d, ADDITIVE_MARKERS);
+  if (additive && !additiveBlocked(d)) {
     return { tier: 'audit', confidence: 0.70, matched: `${additive} -> audit (no separate architect)` };
   }
+  return null;
+}
 
-  // Rule 6 — no marker matched: ASSESS the task's actual complexity/risk instead of blindly
-  // over-scaling to full. Default LEAN (audit: the gate-backstopped verified loop), escalating
-  // to full only for genuine high-risk (risk domains, or broad changes to existing code). This
-  // inverts the old "default to full" now that the green-test gate — not the role count — is
-  // the correctness backstop.
+// Rule 6 — no marker matched: ASSESS the task's actual complexity/risk instead of blindly
+// over-scaling to full. Default LEAN (audit: the gate-backstopped verified loop), escalating
+// to full only for genuine high-risk (risk domains, or broad changes to existing code). This
+// inverts the old "default to full" now that the green-test gate — not the role count — is
+// the correctness backstop. The fallback always returns a value (never null).
+function ruleAssess(d: string): TierClassification {
   const a = assessTask(d);
   return { tier: a.tier, confidence: 0.55, matched: `assessed (${a.signals.join('+')}) -> ${a.tier}` };
+}
+
+export function classifyTier(directive: string): TierClassification {
+  const d = directive;
+  // First-match wins across rules 1–5, in priority order; rule 6 (assess) is the fallback.
+  return (
+    ruleCoordinator(d) ??
+    ruleFull(d) ??
+    ruleImplementerOnly(d) ??
+    ruleAudit(d) ??
+    ruleAdditive(d) ??
+    ruleAssess(d)
+  );
 }
