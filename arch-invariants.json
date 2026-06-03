@@ -7,6 +7,24 @@
     "severity": "block"
   },
   {
+    "id": "no-complex-functions",
+    "intent": "PRIMARY function-health gate: no NEW function with cyclomatic complexity over 12 (1 + decision points + &&/||). The less-arbitrary signal than length — flags BRANCHY hard-to-test functions, not merely long ones (McCabe ~10; 12 is forgiving). Ratchet grandfathers today's complex functions (incl. the routing/tier-router classifier) and blocks any new one. Scans only git-non-ignored .ts.",
+    "check": { "kind": "max_complexity", "maxComplexity": 12 },
+    "mode": "ratchet",
+    "severity": "block",
+    "lang": "ts",
+    "engine": "ast-grep"
+  },
+  {
+    "id": "no-god-functions",
+    "intent": "Coarse BACKSTOP: no NEW function over 150 lines (huge-but-flat functions only; complexity above is the primary gate). Ratchet.",
+    "check": { "kind": "max_function_lines", "maxLines": 150 },
+    "mode": "ratchet",
+    "severity": "block",
+    "lang": "ts",
+    "engine": "ast-grep"
+  },
+  {
     "id": "no-time-bomb-tests",
     "intent": "No test pinned to a frozen git ref/SHA (git diff <ref>..HEAD, --name-only, git show <sha>) — such tests can only rot as HEAD moves past the round. Enforce scope via a round-aware gate, not a permanent product test. (NB: forbid_path coordination/ is intentionally NOT adopted here — coordination/ is Anchor's product domain, unlike a consumer repo where it would be process exhaust.)",
     "check": { "kind": "time_bomb_tests", "dirs": ["packages", "integrations"] },
