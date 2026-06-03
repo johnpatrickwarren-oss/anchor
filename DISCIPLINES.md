@@ -24,7 +24,7 @@ A discipline earns a place here only if it passes **both** sieves:
    the model up does not obviously remove.
 
 Most of what Anchor once was fails one of these sieves and has been removed — see
-[What used to be here](#what-used-to-be-here). What survives is five disciplines, two of them
+[What used to be here](#what-used-to-be-here). What survives is six disciplines, two of them
 load-bearing.
 
 ---
@@ -163,6 +163,39 @@ A, B, or C instead. *(Illustrative: a column labeled `latency_ms` that times onl
 excluding queue wait — can under-report user-visible latency by an order of magnitude; the fix is a
 parallel end-to-end column, resolution A.)*
 
+## 6. Durable project trail
+
+**Trigger:** Any project meant to outlive a single working session — i.e. almost any real one. (A
+one-session throwaway can skip it.)
+
+**Discipline:** Leave a record a cold reader can resume from, split by *tense*:
+
+- **Overwrite the "now."** One short `STATE.md` — what's done, what's in flight, what's next, open
+  questions. Replace it at each session's close; it's a snapshot, never a history.
+- **Append the "forever."** One small ADR per real decision — the choice *and why, including why
+  not the alternatives* — in `decisions/`. Superseded by a new ADR, never edited in place. It grows
+  at the rate of *decisions*, not time, so it never bloats from routine work.
+- Write both for someone who wasn't there, and keep a ruled-out / gotchas line in the relevant ADR
+  so the next operator doesn't re-walk a dead end (the durable half of [V/Q](#4-vq-debugging)).
+
+**Why it beats the default:** a single session is **amnesiac across sessions** — it builds, and the
+reasoning evaporates when the context closes. A model has no persistence motive; it will not leave a
+resumable trail unless told to. "The trail is the source of truth, not the chat" is the override —
+and it's an incentive bet, not a capability one, so a stronger model doesn't absorb it.
+
+**How to apply:** two files, committed, read on demand — see
+[`templates/project-trail/`](templates/project-trail/). Update `STATE.md` at session close; write an
+ADR the moment you make an architectural choice. Deterministic backstop: sprag can gate their
+*existence* (a `STATE.md` touched this session; an ADR accompanying an architectural change) the way
+`require_tests` gates test presence — existence is mechanical; currency and cold-reader quality are
+this discipline's.
+
+**Watch for:** one failure mode on each side. **Don't inject the trail into every prompt** — read it
+on demand; per-prompt injection is the old memorial's bloat sin. And **don't overwrite the
+"forever"** — git technically keeps an overwritten decision, but git archaeology is forensics, not
+handoff; a decision a new operator can't *find* is a decision lost. A stale `STATE.md` is worse than
+none — so update-on-close.
+
 ---
 
 ## What used to be here
@@ -184,7 +217,9 @@ gone, by the two sieves above:
 - **→ retired (orchestration scaffolding):** the role framework, tier dial, wave / DAG / multi-
   cluster parallelism, the TPM/Coordinator roles, role-anchoring and session-ID mapping (only
   meaningful in manual multi-chat mode), round-numbering. A single dynamic session with subagents
-  obviates them.
+  obviates them. (The old **audit-trail** file discipline's *durable-record* value is **not**
+  retired — it returns, git-native, as [Discipline 6](#6-durable-project-trail); only its 250-file
+  coordination-tree mechanism is gone.)
 - **→ archived (project-specific scar tissue):** the P3 ten axes, Memorial D's four-factor prior,
   and the σ²/regime/firing-attribution vocabulary. Real disciplines, but born of one statistical-
   detector codebase; they won't fire elsewhere, and carrying them is what made the methodology
@@ -193,9 +228,9 @@ gone, by the two sieves above:
 ## Keep this list honest
 
 Every discipline here is a bet that the model *won't* do this on its own — the same bet the
-orchestrator lost. Disciplines 1 and 2 are safe bets: they fight incentives (sycophancy,
-eagerness), not capability gaps, and incentives don't obviously improve with scale. Disciplines
-3–5 are capability bets a stronger model may absorb.
+orchestrator lost. Disciplines 1, 2, and 6 are safe bets: they fight incentives (sycophancy,
+eagerness, a session's amnesia), not capability gaps, and incentives don't obviously improve with
+scale. Disciplines 3–5 are capability bets a stronger model may absorb.
 
 So this list has a half-life, and the discipline that keeps it from rotting is a ritual: **on every
 model upgrade, re-test each entry against the bare default.** If the model now does it unprompted,
