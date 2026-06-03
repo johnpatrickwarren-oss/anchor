@@ -16,19 +16,13 @@ anything change?" — the questions do the translation. Three jobs in one:
 2. **It is the coding spec too.** The same answers brief the build.
 3. **Authoring collapses to answering.** No code, no assertions — plain-language answers.
 
-## The loop
+## Impl-blind authoring
 
-```
-operator answers the questions ─▶ behavioral spec ─▶ model drafts candidate properties (IMPL-BLIND)
-                                          │
-              each candidate ─▶ sprag `arch property`  (holds? kills mutants?)
-                                          │   ACCEPT → shortlist     REJECT → drop / flag a real bug
-                                          ▼
-                          human reviews the small shortlist ─▶ commit ─▶ enforced MODEL-FREE forever
-```
-
-The model enters at exactly one place — **drafting, behind the deterministic filter.** It never sits
-on the gate: the model proposes, a model-free check disposes.
+The operator's answers become a behavioral spec; a model drafts candidate properties from it; sprag's
+`arch property` accepts only the ones that *hold* and *kill mutants*; a human reviews the short
+shortlist; the survivors are committed and enforced model-free. The model enters at exactly one place
+— **drafting** — and never sits on the gate: it proposes, a model-free check disposes. Mechanizing
+that flow is a tool's job (a future `arch propose`, sprag-adjacent), not something Anchor runs.
 
 **Impl-blind is load-bearing, not a nicety.** An adversarial test (bad answers → junk properties →
 the gate) found the deterministic filter catches *weak* and *wrong* candidates but **cannot** catch
