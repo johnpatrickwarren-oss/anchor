@@ -13,7 +13,7 @@ mechanical floor plus a handful of disciplines — with no orchestration harness
 
 ## The disciplines
 
-The substance is one file: **[`DISCIPLINES.md`](DISCIPLINES.md)**. Five disciplines, two
+The substance is one file: **[`DISCIPLINES.md`](DISCIPLINES.md)**. Six disciplines, two
 load-bearing:
 
 1. **Independent cold-eye review** — a fresh-context reviewer, prompted to find what's wrong, that never saw the build reasoning. *(load-bearing)*
@@ -21,6 +21,7 @@ load-bearing:
 3. **Halt-on-contradiction** — verify the spec's premises; when spec ≠ reality, stop and ask a bounded question instead of coding around it.
 4. **V/Q debugging** — enumerate hypothesis variants before going deep; frame the falsifying question; re-enumerate after ~3 dead ends.
 5. **Honest measurement** — instrument the gap, don't footnote it; a headline that needs a caveat is misreporting.
+6. **Durable project trail** — leave a cold-readable record: overwrite a short `STATE.md` (the "now"), append one ADR per decision (the "forever"). So a project survives a months-long gap or a handoff.
 
 Each entry gives the trigger, the discipline, *why it beats the base model's default*, and how to
 apply it in a dynamic session.
