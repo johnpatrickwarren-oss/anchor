@@ -41,11 +41,10 @@ Pair it with sprag. Reference `DISCIPLINES.md` from your project's `CLAUDE.md`
 (e.g. `@DISCIPLINES.md`) so the agent applies the disciplines in-context, and let sprag's gate
 enforce the deterministic floor. No roles, no pipeline, no runtime.
 
-To produce the spec that Discipline 2 needs — especially when the operator isn't a developer — use
-the question-driven [`PRD-INTERVIEW.md`](PRD-INTERVIEW.md): the operator answers plain-language
-questions, a model drafts the PRD (and, per unit, candidate properties) **impl-blind**, and the
-deterministic gate accepts. Two tiers: a project-scoping interview and the validated unit-property
-set that feeds sprag's `arch property`.
+Discipline 2 covers eliciting the project spec from an operator who may not code (lead with
+must-never). For behavioral *properties* of a single function — invariants that feed sprag's
+`arch property` — use the question-driven [`PRD-INTERVIEW.md`](PRD-INTERVIEW.md): plain-language
+answers, drafted **impl-blind**, accepted by the deterministic gate.
 
 ## History
 

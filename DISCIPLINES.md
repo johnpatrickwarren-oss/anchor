@@ -81,10 +81,17 @@ this is the discipline that keeps the input honest.
 **How to apply:** For real features, draft the contract first and (per discipline 1) let a clean
 reviewer grill *the spec* before any code exists — a spec gap caught here is far cheaper than the
 same gap caught after implementation (rule of thumb ~10×, not a measured constant). Keep the acceptance criteria; they become the test list and
-the reviewer's checklist. If the operator can't write the contract — or isn't a developer — don't
-make them: run the authoring interview in [`PRD-INTERVIEW.md`](PRD-INTERVIEW.md), where
-plain-language answers become the PRD (and, per unit, candidate properties), drafted impl-blind and
-accepted by the deterministic gate.
+the reviewer's checklist.
+
+When the operator isn't a developer, don't make them write the contract — elicit it with questions
+and use their answers as the spec. Two things earn their place over a generic PRD template: **lead
+with must-never** (the field test found "what must this never do?" is both the highest-value answer
+and the one a non-expert gives best — ask it first, not last), and give each answer a **quality bar**
+(a success example concrete enough to become a test; a must-never that's a real prohibition). The
+*countable* half of a bar (≥2 examples, ≥1 prohibition) is sprag's existence-check; the quality
+judgment is yours. For eliciting behavioral *properties* of a single function — invariants that feed
+sprag's `arch property` — use the unit-property interview in
+[`PRD-INTERVIEW.md`](PRD-INTERVIEW.md), drafted impl-blind.
 
 **Watch for:** The spec is the ceiling. The whole stack verifies *conformance to the spec*, never
 that the spec is what you actually wanted — keep a human on that.
