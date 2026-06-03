@@ -27,11 +27,17 @@ that flow is a tool's job (a future `arch propose`, sprag-adjacent), not somethi
 **Impl-blind is load-bearing, not a nicety.** An adversarial test (bad answers → junk properties →
 the gate) found the deterministic filter catches *weak* and *wrong* candidates but **cannot** catch
 an *impl-restating* one — a candidate that copies the implementation as its own "expected" kills
-mutants by construction yet tests nothing. The only defense is that the author never sees the
-implementation: feed it signature + spec + the catalog, never the body. sprag's **impl-restatement
-guard** is the deterministic backstop; impl-blind authoring is the primary one. (Same independence
-principle as [Discipline 1](DISCIPLINES.md#1-independent-cold-eye-review-load-bearing), on the spec
-side: a spec written while staring at the code just launders the code into the contract.)
+mutants by construction yet tests nothing. There are two defenses, and only one is Anchor's.
+**Structural (the tool's):** control what the author sees — feed it signature + spec + the catalog,
+never the body. Where a tool owns the pipeline (`arch propose`) this is deterministic, and sprag's
+**impl-restatement guard** backstops it. **Behavioral (Anchor's):** in a single dynamic session the
+author *usually already has the code in context*, so blindness can't be structurally guaranteed — the
+discipline is to author from **intent**, not from the code you can see (or spawn a clean-context
+author). That judgment is the load-bearing part, precisely because in a single session
+code-in-context is the *default* — and it's the same independence principle as
+[Discipline 1](DISCIPLINES.md#1-independent-cold-eye-review-load-bearing): the author must not see
+the implementation, just as the reviewer must not see the build reasoning. A spec written while
+staring at the code just launders the code into the contract.
 
 ## The question set
 
