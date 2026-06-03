@@ -156,7 +156,9 @@ pick one:
 defaults to the favorable framing and trusts the reader to find the caveat ten lines down — but
 the column header is what gets quoted into the PR, the deck, the postmortem, and the caveat is
 what gets dropped. A partial-with-caveat measurement is a violation *by construction*, however
-well the caveat is written. The fix is structural, not literary.
+well the caveat is written. The fix is structural, not literary. (And it stays a *discipline*, not a
+sprag gate: the A/B/C rename is mechanical, but judging whether a name materially *misleads* — the
+name versus what the code actually computes — is a semantic call a deterministic check can't make.)
 
 **How to apply:** When you catch yourself writing "(note: this is actually only…)", stop and apply
 A, B, or C instead. *(Illustrative: a column labeled `latency_ms` that times only in-handler work —
@@ -228,9 +230,9 @@ gone, by the two sieves above:
 ## Keep this list honest
 
 Every discipline here is a bet that the model *won't* do this on its own — the same bet the
-orchestrator lost. Disciplines 1, 2, and 6 are safe bets: they fight incentives (sycophancy,
-eagerness, a session's amnesia), not capability gaps, and incentives don't obviously improve with
-scale. Disciplines 3–5 are capability bets a stronger model may absorb.
+orchestrator lost. Disciplines 1, 2, 5, and 6 are safe bets: they fight incentives (sycophancy,
+eagerness, favorable framing, a session's amnesia), not capability gaps, and incentives don't
+obviously improve with scale. Disciplines 3 and 4 are capability bets a stronger model may absorb.
 
 So this list has a half-life, and the discipline that keeps it from rotting is a ritual: **on every
 model upgrade, re-test each entry against the bare default.** If the model now does it unprompted,
