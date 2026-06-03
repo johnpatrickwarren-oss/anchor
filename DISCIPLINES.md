@@ -42,12 +42,17 @@ most sycophantic thing it does — it has already decided the work is good and w
 toward "looks correct." The default self-review is worth little because it shares every blind
 spot of the build. Clean context plus an adversarial frame is what breaks that. In my experience — across the
 projects this was distilled from, not a measured result — it is the highest-yield discipline here.
+What's load-bearing is the *independence*, not the reviewer's skill: a better model reviews better
+but also rationalizes its own work more confidently in-context, so the same-context sycophancy this
+fights doesn't fade with scale — the discipline survives no matter how good reviewers get.
 
-**How to apply:** Spawn a subagent (or open a clean session) that receives only the spec and the
-diff — not your reasoning, not your summary of why it's right. Prompt it adversarially: *"You are
-auditing this change. Find the ways it fails the spec or breaks existing behavior. Cite
-file:line. A clean review is a few lines; do not narrate."* Then address every finding by
-severity — don't dismiss. When the change includes a *correction* to a prior claim, have the
+**How to apply:** The mechanics are the harness's — spawn a subagent (or open a clean session) that
+receives only the spec and the diff, not your reasoning or your summary of why it's right. The
+*discipline* is what the harness can't supply: **deciding to do it at all** (a single session won't
+— it self-assesses and calls the work good) plus the adversarial judgment. Prompt the reviewer
+adversarially: *"You are auditing this change. Find the ways it fails the spec or breaks existing
+behavior. Cite file:line. A clean review is a few lines; do not narrate."* Then address every finding
+by severity — don't dismiss. When the change includes a *correction* to a prior claim, have the
 reviewer confirm it propagated to every semantic-paraphrase site and downstream citation — a
 literal grep returning zero is not consistency; the wrong claim survives re-worded.
 
