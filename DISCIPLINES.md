@@ -194,10 +194,11 @@ and it's an incentive bet, not a capability one, so a stronger model doesn't abs
 
 **How to apply:** two files, committed, read on demand — see
 [`templates/project-trail/`](templates/project-trail/). Update `STATE.md` at session close; write an
-ADR the moment you make an architectural choice. Deterministic backstop: sprag can gate their
-*existence* (a `STATE.md` touched this session; an ADR accompanying an architectural change) the way
-`require_tests` gates test presence — existence is mechanical; currency and cold-reader quality are
-this discipline's.
+ADR the moment you make an architectural choice. Deterministic backstop: more is mechanical than it
+looks — sprag can gate that a `STATE.md` was *touched this session*, that an ADR *accompanies* an
+architectural change, and that an accepted ADR *wasn't edited in place* (append-only), the way
+`require_tests` gates test presence. What no gate can check is what this discipline owns: whether the
+trail is **accurate and legible to a cold reader** — touched ≠ current, existing ≠ resumable.
 
 **Watch for:** one failure mode on each side. **Don't inject the trail into every prompt** — read it
 on demand; per-prompt injection is the old memorial's bloat sin. And **don't overwrite the
@@ -237,9 +238,11 @@ gone, by the two sieves above:
 ## Keep this list honest
 
 Every discipline here is a bet that the model *won't* do this on its own — the same bet the
-orchestrator lost. Disciplines 1, 2, 5, and 6 are safe bets: they fight incentives (sycophancy,
-eagerness, favorable framing, a session's amnesia), not capability gaps, and incentives don't
-obviously improve with scale. Disciplines 3 and 4 are capability bets a stronger model may absorb.
+orchestrator lost. Disciplines 1, 2, and 5 are safe bets — as is the decision-log half of 6: they fight incentives
+(sycophancy, eagerness, favorable framing, a session's amnesia), not capability gaps, and incentives
+don't obviously improve with scale. Disciplines 3 and 4 are capability bets a stronger model may
+absorb — as is the `STATE.md`-snapshot half of 6, which an agent harness with persistent memory
+might one day maintain on its own.
 
 So this list has a half-life, and the discipline that keeps it from rotting is a ritual: **on every
 model upgrade, re-test each entry against the bare default.** If the model now does it unprompted,
