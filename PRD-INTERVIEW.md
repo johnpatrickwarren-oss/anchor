@@ -45,7 +45,10 @@ The validated 7. Derivation (13 → 7, field-tested on three real functions) is 
 [`design/prd-interview-field-test.md`](design/prd-interview-field-test.md). *(answer → property
 shape it yields)*
 
-1. **Contract.** *One sentence: the single promise this makes to its caller.* → core postcondition.
+1. **Contract.** *One sentence: the single promise this makes to its caller.* → core postcondition
+   (the **orienting anchor** the other six hang off; also the weakest sieve-2 pass — a model often
+   states the contract unprompted and it overlaps Q4, so it's kept to pin the operator's intent
+   cheaply, and half-life-watched).
 2. **Must-never.** *What must never happen, no matter the input?* → **safety invariant** (surfaced
    the single best property for every function tested — ask it first).
 3. **Domain & refusal.** *What are the valid inputs and their ranges? What inputs are invalid, and
