@@ -53,6 +53,13 @@ For scoping a whole project or feature. Plain-language, operator-answerable. Pro
 gives the build tight guidance, the success criteria, and the boundary. *(answer-bar → what it
 produces)*
 
+> **Where the value actually is** (two-sieve audit). A strong model already knows PRD *structure*,
+> so the section list below is close to a base-model default — ceremony if that were all it is. What
+> earns Tier 1's place is the part the model **can't** supply: pulling intent out of an operator who
+> may not be a developer (their must-nevers, their real examples, their hard constraints), the
+> **must-never-first** ordering, and the **bars**. Treat this as the capability-leaning tier and
+> half-life-watch it hardest; Tier 2 and impl-blind carry the non-ceremony weight.
+
 1. **Purpose.** *In a sentence or two: what is this, and what job does it do for someone?*
    Bar: names a user and an outcome, not a technology. → purpose; the baseline the restatement guard
    measures "added scope" against.
@@ -124,6 +131,11 @@ fit-for-purpose iff:
 - every section of the produced PRD traces back to an answer, and
 - it **adds scope beyond the one-liner** — if the PRD is just Q1 reworded, it failed (this last is
   sprag's deterministic restatement guard).
+
+A pass-bar splits the way everything else does: the **countable** half (≥2 input→output pairs, ≥1
+explicit prohibition) is mechanizable, so it's sprag's existence-check; only the **quality**
+judgment — is this example concrete enough to become a test? is this a real prohibition? — is the
+behavioral residue this interview owns.
 
 What the deterministic filter does and does **not** guarantee, from the adversarial test:
 
