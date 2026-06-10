@@ -41,7 +41,8 @@ done
 
 # ── Resolve project root + canonical ─────────────────────────────────────────
 PROJECT_ROOT="$(pwd)"
-ANCHOR_CANONICAL="${ANCHOR_CANONICAL:-$HOME/anchor/integrations/superpowers-claude-code}"
+# Post-archive default; the toolkit moved under legacy/ in 2026-06.
+ANCHOR_CANONICAL="${ANCHOR_CANONICAL:-$HOME/anchor/legacy/integrations/superpowers-claude-code}"
 
 # ── Sanity checks ────────────────────────────────────────────────────────────
 if [[ ! -d "$PROJECT_ROOT/.git" ]]; then

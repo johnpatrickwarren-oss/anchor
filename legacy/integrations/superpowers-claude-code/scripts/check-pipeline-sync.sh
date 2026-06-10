@@ -2,14 +2,15 @@
 # check-pipeline-sync.sh — canonical-sync drift detector.
 #
 # Compares this project's pipeline files against the canonical at
-# ~/anchor/integrations/superpowers-claude-code/ and reports any
+# ~/anchor/legacy/integrations/superpowers-claude-code/ and reports any
 # byte-level differences. Reports drift direction via mtime heuristic.
 #
 # Usage:
 #   ./scripts/check-pipeline-sync.sh
 #
 # Environment:
-#   CANONICAL_DIR  Override canonical path (default: ~/anchor/integrations/superpowers-claude-code)
+#   CANONICAL_DIR  Override canonical path (default:
+#                  ~/anchor/legacy/integrations/superpowers-claude-code).
 #                  Used by the smoke test to inject a controlled temp directory.
 #
 # Exit codes:
@@ -19,7 +20,8 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CANONICAL="${CANONICAL_DIR:-$HOME/anchor/integrations/superpowers-claude-code}"
+# Post-archive default; the toolkit moved under legacy/ in 2026-06.
+CANONICAL="${CANONICAL_DIR:-$HOME/anchor/legacy/integrations/superpowers-claude-code}"
 
 # ── Graceful absent-canonical handling ────────────────────────────────────────
 if [[ ! -d "$CANONICAL" ]]; then

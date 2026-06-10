@@ -1,6 +1,6 @@
 # Design: the architectural-invariant gate
 
-**Status:** BUILT and SHIPPED as its own repo + tool — **[johnpatrickwarren-oss/arch-gate](https://github.com/johnpatrickwarren-oss/arch-gate)** (`npm i -g github:johnpatrickwarren-oss/arch-gate`; 20/20 suites). It was prototyped here under `prototypes/architectural-gate/` and graduated to a standalone repo; this doc remains the design rationale. Refines the direction of ADR 0001 (`design/adr/0001-pivot-to-verification-harness.md`).
+**Status:** BUILT and SHIPPED as its own repo + tool — **[johnpatrickwarren-oss/sprag](https://github.com/johnpatrickwarren-oss/sprag)** (`npm i -g github:johnpatrickwarren-oss/sprag`; 20/20 suites; originally named `arch-gate`, since renamed). It was prototyped here under `prototypes/architectural-gate/` and graduated to a standalone repo; this doc remains the design rationale. Refines the direction of ADR 0001 (`design/adr/0001-pivot-to-verification-harness.md`).
 
 > **Built so far (2026-06-01):** all 5 k10s tenets enforced; real ASTs for Go (`@ast-grep/lang-go`)
 > and TypeScript/JS (`@ast-grep/napi`) with a heuristic no-dep fallback; generic no-tuning checks

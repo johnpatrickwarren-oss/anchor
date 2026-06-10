@@ -97,4 +97,4 @@ The audit itself ([linked in DeploySignal repo](https://github.com/johnpatrickwa
 - **Single human operator.** Multi-human-operator dynamics not tested.
 - **Single agent platform.** Built on Claude Code + Cowork chats with Anthropic's Claude. Generalization to other agent platforms (CrewAI, LangGraph, Devin, etc.) is hypothesis.
 
-If you adopt the anchor pack for a different domain or platform and find it useful (or find it doesn't generalize), please open an issue in the [anchor repo](https://github.com/[link]) describing the experience. Case studies from other contexts are the most valuable contribution to the pack.
+If you adopt the anchor pack for a different domain or platform and find it useful (or find it doesn't generalize), please open an issue in the [anchor repo](https://github.com/johnpatrickwarren-oss/anchor) describing the experience. Case studies from other contexts are the most valuable contribution to the pack.
