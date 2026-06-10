@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { verifyCitations, parseCitationTable, gitCitationResolver } from '../src/index.ts';
 import type { CitationResolver } from '../src/index.ts';
 
@@ -68,7 +69,16 @@ test('missing table is advisory (MINOR), not a hard fail', () => {
 
 test('gitCitationResolver: null on bogus SHA; resolves a real committed file at HEAD', () => {
   const resolve = gitCitationResolver(process.cwd());
-  assert.equal(resolve('packages/core/package.json', 'deadbeef0000', '1'), null);
-  const head = resolve('packages/core/package.json', 'HEAD', '1');
+  // `git show SHA:path` paths are relative to the repo root. Derive this
+  // package's prefix dynamically so the test survives the workspace moving
+  // within the repo (it broke once when the workspace was archived under
+  // legacy/ and the hardcoded 'packages/core/...' path went stale).
+  const prefix = execFileSync('git', ['rev-parse', '--show-prefix'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  }).trim();
+  const pkgPath = `${prefix}package.json`;
+  assert.equal(resolve(pkgPath, 'deadbeef0000', '1'), null);
+  const head = resolve(pkgPath, 'HEAD', '1');
   assert.equal(head, '{'); // line 1 of package.json
 });
