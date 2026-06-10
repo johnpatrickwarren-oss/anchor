@@ -58,7 +58,7 @@ No rule 1–4 matched. In `--mode heuristic`: output `full` (uncertainty escape 
 pnpm tier-router
 
 # Classify a specific directive file in deterministic heuristic mode
-node scripts/tier-router.js --directive coordination/NEXT-ROLE.md --mode heuristic
+node scripts/tier-router.ts --directive coordination/NEXT-ROLE.md --mode heuristic
 
 # Validate the full corpus (load-bearing safety check)
 pnpm tier-router:validate
@@ -69,8 +69,13 @@ pnpm tier-router:validate
 
 ## Safety corpus
 
-Load-bearing safety rounds (MUST route `full`): R45, R61, R62, R66, R72
+Load-bearing safety rounds (MUST route `full`): R45, R61, R72
 
-Coordinator exclusion rounds (MUST NOT route `implementer-only`): R49, R50, R51, R55, R60, R63, R64, R68
+Exclusion rounds (MUST NOT route `implementer-only`): R49, R55
 
 Source: `scripts/tier-router-fixtures/corpus.json`
+
+> Note: the original Tessera corpus (R45, R61, R62, R66, R72 / R49–R68) referenced
+> project-local git SHAs and was never committed to this repo. The shipped corpus is a
+> reconstructed embedded-fixture subset — one fixture per heuristic rule — so
+> `tier-router-validate.ts` is hermetic and runnable from a fresh clone.

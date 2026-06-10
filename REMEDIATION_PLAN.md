@@ -287,7 +287,7 @@ stubbed `sk-ant-test` in tests), no CI workflows to compromise, no malicious lin
 - [x] H2 — Include untracked coordination files in `finalize-round.sh` step-3 change detection (drop the `grep -v "^??"` filter or add-then-check).
 - [x] M9 — De-duplicate the two diverged `finalize-round.sh` copies; canonical now `scripts/finalize-round.sh` (configurable version + lock removal); root is an exec shim; both in sync manifest.
 - [x] M1 — Fix `legacy/packages/core/test/citation.test.ts:73` path (`legacy/packages/core/package.json` or `git rev-parse --show-prefix`).
-- [ ] M2 — Fix `tier-router-validate.ts` ESM `__dirname` crash; commit or retarget `tier-router-fixtures/corpus.json`; point spawn at `tier-router.ts`.
+- [x] M2 — Fix `tier-router-validate.ts` ESM `__dirname` crash; commit or retarget `tier-router-fixtures/corpus.json`; point spawn at `tier-router.ts`.
 - [ ] M3 — Make `check-lint-baseline.sh` fail closed when `npm run lint` cannot run; make its smoke test self-contained.
 - [ ] M4 — Record a routing decision (ESCALATE/MERGE-READY) in the hybrid-Reviewer degraded path.
 - [ ] M5 — `cd "$PROJECT_ROOT"` at `run-pipeline.sh` startup (or absolutize the remaining relative paths).
