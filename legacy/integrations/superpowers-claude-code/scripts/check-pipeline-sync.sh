@@ -30,6 +30,7 @@ fi
 # ── Files to compare (relative paths, same on both sides) ─────────────────────
 FILES=(
   "run-pipeline.sh"
+  "finalize-round.sh"
   "scripts/finalize-round.sh"
   "scripts/check-manifest.sh"
   "scripts/check-lint-baseline.sh"
