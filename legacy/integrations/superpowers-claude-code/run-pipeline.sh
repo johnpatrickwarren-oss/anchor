@@ -54,6 +54,12 @@ set -uo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+# Anchor the working directory immediately. Several paths below (the routing
+# log, `node scripts/*.ts` selector invocations, the wave-gate verifier, the
+# hybrid-fallback cp) are cwd-relative; invoked from any other directory they
+# would read/write a different tree than the $PROJECT_ROOT-anchored paths —
+# silent split-brain state. finalize-round.sh already assumes this cd.
+cd "$PROJECT_ROOT" || { echo "ERROR: cannot cd to $PROJECT_ROOT" >&2; exit 1; }
 COORD="$PROJECT_ROOT/coordination"
 CROSS_MEMORIAL="$HOME/.claude/CROSS-PROJECT-MEMORIAL.md"
 LOG_DIR="$COORD/logs"
@@ -190,9 +196,11 @@ Options:
                        scripts/multi-track-cluster-setup.sh per cluster.
                        See CLAUDE-COORDINATOR.md for role discipline.
   --wave-gate WAVE-NN  Coordinator wave-gate close (use with --coordinator).
-                       Runs scripts/verify-wave-aggregate.sh WAVE-NN, detects
-                       solo-tier clusters, and fires a mandatory tier-aware
-                       consolidation Reviewer if any cluster ran --tier solo.
+                       Detects solo-tier clusters and fires a mandatory
+                       tier-aware consolidation Reviewer if any cluster ran
+                       --tier solo. Aggregate merge verification is a separate
+                       operator step: scripts/multi-track-verify-wave-merge.sh
+                       (see MULTI-TRACK-RUNBOOK.md).
                        See CLAUDE-COORDINATOR.md § Wave gate discipline.
   --consolidation-reviewer
                        Force consolidation Reviewer at wave-gate close, even
@@ -407,8 +415,9 @@ esac
 # separate operator step (scripts/multi-track-cluster-setup.sh per cluster).
 #
 # --coordinator --wave-gate WAVE-NN: Coordinator wave-gate close flow.
-# Runs verify-wave-aggregate.sh, detects solo-tier clusters, and fires a
-# mandatory tier-aware consolidation Reviewer if any cluster ran --tier solo.
+# Detects solo-tier clusters and fires a mandatory tier-aware consolidation
+# Reviewer if any cluster ran --tier solo. (Aggregate merge verification is
+# the operator-run scripts/multi-track-verify-wave-merge.sh.)
 # See CLAUDE-COORDINATOR.md § "Tier-aware consolidation Reviewer at wave-gate close".
 if $COORDINATOR_MODE; then
   if $WAVE_GATE_MODE; then
@@ -454,23 +463,6 @@ trap cleanup_lock EXIT
 
 acquire_round_lock() {
   LOCKFILE="$COORD/.pipeline-${ROUND}.lock"
-  if [[ -f "$LOCKFILE" ]]; then
-    local lock_pid
-    lock_pid=$(awk -F': ' '/^PID:/ {print $2; exit}' "$LOCKFILE" 2>/dev/null)
-    if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
-      log_error "Another pipeline is already running for round $ROUND."
-      log_error "  Lockfile: $LOCKFILE"
-      log_error "  Live PID: $lock_pid"
-      log_error ""
-      log_error "Wait for that pipeline to finish, or kill the process before retrying."
-      log_error "If you are certain the lockfile is stale (process died without cleanup),"
-      log_error "remove it manually: rm \"$LOCKFILE\""
-      exit 2
-    else
-      log_warn "Stale lockfile at $LOCKFILE (PID $lock_pid not alive); removing."
-      rm -f "$LOCKFILE"
-    fi
-  fi
 
   # Compute effective roles — the roles that will actually run, given START_AT filtering.
   # Mirrors the should_run() logic inline so it is available before that function is defined.
@@ -490,16 +482,47 @@ acquire_round_lock() {
     _effective_tier+="$_er"
   done
 
-  cat > "$LOCKFILE" <<EOF
-PID: $$
+  local lock_content
+  lock_content="PID: $$
 STARTED: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 HOSTNAME: $(hostname -s 2>/dev/null || hostname)
 ROUND: $ROUND
 START_AT: ${START_AT:-$FIRST_ROLE}
 TIER: $TIER
-EFFECTIVE_TIER: $_effective_tier
-EOF
-  LOCK_HELD=true
+EFFECTIVE_TIER: $_effective_tier"
+
+  # Atomic create-and-claim: under noclobber, `>` opens with O_EXCL, so exactly
+  # one of two simultaneously launched pipelines can create the lockfile. The
+  # previous check-then-create ([[ -f ]] … cat >) let both pass the existence
+  # check and both proceed — precisely the R10 double-REVIEWER race this lock
+  # exists to prevent. Two attempts: the second retries after removing a lock
+  # that turned out to be stale.
+  local attempt
+  for attempt in 1 2; do
+    if (set -o noclobber; printf '%s\n' "$lock_content" > "$LOCKFILE") 2>/dev/null; then
+      LOCK_HELD=true
+      return 0
+    fi
+
+    # Lockfile already exists: live owner, or stale leftover?
+    local lock_pid
+    lock_pid=$(awk -F': ' '/^PID:/ {print $2; exit}' "$LOCKFILE" 2>/dev/null)
+    if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+      log_error "Another pipeline is already running for round $ROUND."
+      log_error "  Lockfile: $LOCKFILE"
+      log_error "  Live PID: $lock_pid"
+      log_error ""
+      log_error "Wait for that pipeline to finish, or kill the process before retrying."
+      log_error "If you are certain the lockfile is stale (process died without cleanup),"
+      log_error "remove it manually: rm \"$LOCKFILE\""
+      exit 2
+    fi
+    log_warn "Stale lockfile at $LOCKFILE (PID ${lock_pid:-unknown} not alive); removing."
+    rm -f "$LOCKFILE"
+  done
+
+  log_error "Could not acquire round lock at $LOCKFILE (lost the creation race repeatedly)."
+  exit 2
 }
 
 # ── Flag detection ────────────────────────────────────────────────────────────
@@ -734,12 +757,11 @@ the full role discipline (loaded as your system prompt).
 
 Read these before doing anything (in order):
   - $PRD_PATH  (requirements — read in full)
-  - coordination/SCOPING-MEMO-v0.3.md  (canonical scope; § 2 per-extension scope; § 3 Q-cycle estimates)
-  - coordination/NEXT-ROLE.md  (round-scope directive — operator-prepared inputs for this Coordinator invocation)
-  - coordination/PHASE-2-SLICE-1-CLOSE-WALK.md  (vendored-with-deltas + anti-scope SHA-anchor patterns)
-  - coordination/PHASE-2-SLICE-2-CLOSE-WALK.md  (most recent close-walk; SLICE 3 entry framing in § 3)
+  - coordination/NEXT-ROLE.md  (round-scope directive — operator-prepared inputs for this
+    Coordinator invocation; also read EVERY file it lists under "Inputs for next role" —
+    that is where the operator points you at project-specific scope memos, prior
+    close-walks, and wave-gate records)
   - templates/WAVE-PLAN-TEMPLATE.md  (scaffold for your primary deliverable)
-  - templates/README.md  (Tessera-local path-reference adaptation table)
   - $CROSS_MEMORIAL  ("Reinforcement rules derived" sections — apply all)
 
 DAG construction discipline (per CLAUDE-COORDINATOR.md §DAG construction):
@@ -811,33 +833,26 @@ PROMPT
 }
 
 # Coordinator wave-gate close flow:
-# (1) Run scripts/verify-wave-aggregate.sh <WAVE-NN>
-# (2) Detect if any cluster ran --tier solo (heuristic: no REVIEWER CONFIRMATION
+# (1) Detect if any cluster ran --tier solo (heuristic: no REVIEWER CONFIRMATION
 #     in MEMORIAL-fragment.md implies solo-tier — the Reviewer stage appends at
 #     minimum one CONFIRMATION entry in audit/full tiers)
-# (3) If solo-tier detected OR --consolidation-reviewer flag: dispatch consolidation
+# (2) If solo-tier detected OR --consolidation-reviewer flag: dispatch consolidation
 #     Reviewer subprocess
+# Aggregate merge verification is NOT run here: the planned
+# scripts/verify-wave-aggregate.sh wrapper was never shipped, and the existing
+# verifier (scripts/multi-track-verify-wave-merge.sh) needs the cluster list,
+# which only the operator has at gate-close time. The flow points the operator
+# at it instead of silently skipping a phantom step.
 # See CLAUDE-COORDINATOR.md § "Tier-aware consolidation Reviewer at wave-gate close"
 run_wave_gate_close() {
   log_section "COORDINATOR WAVE-GATE CLOSE | Wave: $WAVE_GATE_ID"
 
-  # Step 1: aggregate verifier
-  if [[ -x "scripts/verify-wave-aggregate.sh" ]]; then
-    log "Running scripts/verify-wave-aggregate.sh $WAVE_GATE_ID ..."
-    local aggregate_exit=0
-    scripts/verify-wave-aggregate.sh "$WAVE_GATE_ID" | tee -a "$PIPELINE_LOG" || aggregate_exit=$?
-    if [[ $aggregate_exit -ne 0 ]]; then
-      log_warn "verify-wave-aggregate.sh exited $aggregate_exit — aggregate finding(s) detected."
-      log_warn "Review findings above before setting STATUS: WAVE-COMPLETE."
-    else
-      log "verify-wave-aggregate.sh: clean sweep (exit 0)."
-    fi
-  else
-    log_warn "scripts/verify-wave-aggregate.sh not found or not executable; skipping aggregate sweep."
-    log_warn "Install with: chmod +x scripts/verify-wave-aggregate.sh"
-  fi
+  # Aggregate verification reminder (operator step)
+  log "Aggregate merge verification is an operator step — before setting STATUS: WAVE-COMPLETE, run:"
+  log "  ./scripts/multi-track-verify-wave-merge.sh --wave ${WAVE_GATE_ID#WAVE-} --clusters <id1,id2,...> [--baseline <tag>]"
+  log "  (see MULTI-TRACK-RUNBOOK.md § wave merge verification)"
 
-  # Step 2: detect solo-tier clusters
+  # Step 1: detect solo-tier clusters
   local solo_tier_detected=false
   local fragment_dir="coordination/clusters"
   if [[ -d "$fragment_dir" ]]; then
@@ -853,7 +868,7 @@ run_wave_gate_close() {
     done
   fi
 
-  # Step 3: tier-aware consolidation Reviewer
+  # Step 2: tier-aware consolidation Reviewer
   local consolidation_needed=false
   if $solo_tier_detected; then
     log "Solo-tier cluster(s) detected — MANDATORY consolidation Reviewer required."
@@ -1427,7 +1442,7 @@ Disciplines to evaluate (for all roles, this round):
   pre-emit-grilling | halt-discipline | right-reasons-audit
   role-boundary | anti-scope | tdd-discipline | context-isolation
 
-Complete all five deliverables:
+Complete all six deliverables:
 
 1. Append to coordination/MEMORIAL.md
    For each discipline, for each role:
@@ -1543,9 +1558,25 @@ dispatch_hybrid_reviewer() {
   fi
   if [[ $exit_sonnet -ne 0 ]]; then
     log_warn "Sonnet Reviewer failed (exit $exit_sonnet). Continuing with Opus-only fallback; merger will skip sonnet input."
-    # Fallback: copy Opus report to canonical position; skip merger
-    cp "coordination/reviews/REVIEWER-REPORT-${ROUND}-opus.md" "coordination/reviews/REVIEWER-REPORT-${ROUND}.md"
+    # Fallback: copy Opus report to canonical position; skip merger.
+    local opus_report="$PROJECT_ROOT/coordination/reviews/REVIEWER-REPORT-${ROUND}-opus.md"
+    cp "$opus_report" "$PROJECT_ROOT/coordination/reviews/REVIEWER-REPORT-${ROUND}.md"
     log_warn "Hybrid degraded to single-Reviewer (Opus) for $ROUND. Sonnet log: $LOG_DIR/REVIEWER-SONNET-${ROUND}.log"
+    # The merger is the SOLE writer of the routing decision in hybrid mode
+    # (per-model reviewers are forbidden from touching NEXT-ROLE.md). With
+    # the merger skipped, apply the routing rule here — otherwise a CRITICAL
+    # finding in the Opus report never sets ESCALATE and the round closes as
+    # if reviewed clean. Conservative match: any CRITICAL token escalates
+    # (a spurious ESCALATE costs an operator glance; a missed one ships a
+    # CRITICAL finding).
+    if grep -qE '(^|[^A-Za-z])CRITICAL([^A-Za-z]|$)' "$opus_report" 2>/dev/null; then
+      set_status "ESCALATE"
+      log_warn "Degraded-path routing: CRITICAL found in Opus report → STATUS: ESCALATE."
+    else
+      set_status "MERGE-READY"
+      log "Degraded-path routing: no CRITICAL in Opus report → STATUS: MERGE-READY."
+    fi
+    check_escalation   # mirrors run_role: prints escalation items and exits 2 on ESCALATE
     return 0
   fi
 
@@ -1817,9 +1848,15 @@ run_preflight() {
   }
   # CLAUDE.md is the interactive-session loader; the pipeline reads the split
   # files for headless runs. Check that every required piece is present.
+  # Coordinator mode additionally requires its role file (run_role refuses to
+  # dispatch COORDINATOR without it, so catch the gap here, up front).
+  local required_claude_files=(CLAUDE.md CLAUDE-COMMON.md CLAUDE-ARCHITECT.md \
+                               CLAUDE-IMPLEMENTER.md CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md)
+  if $COORDINATOR_MODE; then
+    required_claude_files+=(CLAUDE-COORDINATOR.md)
+  fi
   local missing_claude_files=()
-  for f in CLAUDE.md CLAUDE-COMMON.md CLAUDE-ARCHITECT.md CLAUDE-IMPLEMENTER.md \
-           CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md; do
+  for f in "${required_claude_files[@]}"; do
     [[ -f "$PROJECT_ROOT/$f" ]] || missing_claude_files+=("$f")
   done
   if [[ ${#missing_claude_files[@]} -gt 0 ]]; then

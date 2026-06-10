@@ -289,11 +289,11 @@ stubbed `sk-ant-test` in tests), no CI workflows to compromise, no malicious lin
 - [x] M1 — Fix `legacy/packages/core/test/citation.test.ts:73` path (`legacy/packages/core/package.json` or `git rev-parse --show-prefix`).
 - [x] M2 — Fix `tier-router-validate.ts` ESM `__dirname` crash; commit or retarget `tier-router-fixtures/corpus.json`; point spawn at `tier-router.ts`.
 - [x] M3 — Make `check-lint-baseline.sh` fail closed when `npm run lint` cannot run; make its smoke test self-contained.
-- [ ] M4 — Record a routing decision (ESCALATE/MERGE-READY) in the hybrid-Reviewer degraded path.
-- [ ] M5 — `cd "$PROJECT_ROOT"` at `run-pipeline.sh` startup (or absolutize the remaining relative paths).
-- [ ] M6 — Ship or remove `scripts/verify-wave-aggregate.sh`; fix the misleading "Install with chmod" hint.
-- [ ] M7 — Remove Tessera-specific reads from the Coordinator prompt; add `CLAUDE-COORDINATOR.md` template + scaffold + preflight coverage; ship `templates/` to scaffolded projects.
-- [ ] M8 — Make round-lock acquisition atomic (`mkdir` or `noclobber`).
+- [x] M4 — Record a routing decision (ESCALATE/MERGE-READY) in the hybrid-Reviewer degraded path.
+- [x] M5 — `cd "$PROJECT_ROOT"` at `run-pipeline.sh` startup (or absolutize the remaining relative paths).
+- [x] M6 — Ship or remove `scripts/verify-wave-aggregate.sh`; fix the misleading "Install with chmod" hint. (Removed the dead step; the close flow now points the operator at the existing `multi-track-verify-wave-merge.sh`.)
+- [x] M7 — Remove Tessera-specific reads from the Coordinator prompt; add `CLAUDE-COORDINATOR.md` template + scaffold + preflight coverage; ship `templates/` to scaffolded projects.
+- [x] M8 — Make round-lock acquisition atomic (`mkdir` or `noclobber`).
 
 **Hygiene / docs (batchable):**
 - [ ] L3 — Fix `legacy/multi-cluster-parallelism/README.md:5` link prefix.
@@ -302,7 +302,7 @@ stubbed `sk-ant-test` in tests), no CI workflows to compromise, no malicious lin
 - [ ] L6 — Update `arch-gate` → `sprag` link and npm install command.
 - [ ] L7 — Remove/ship `scripts/refresh-models.ts` referenced by `models.json`.
 - [ ] L8 — Reword `anchor-overnight.sh` safety claims (allow-list still permits arbitrary execution).
-- [ ] L9 — "five deliverables" → six in the Memorial-Updater prompt.
+- [x] L9 — "five deliverables" → six in the Memorial-Updater prompt.
 - [ ] L10 — Update stale `~/anchor/integrations/...` canonical defaults to the `legacy/` path.
 
 ---

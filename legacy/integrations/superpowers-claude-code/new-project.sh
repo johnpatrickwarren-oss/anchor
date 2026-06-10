@@ -31,13 +31,13 @@ mkdir -p src
 mkdir -p tests
 
 # ── CLAUDE.md + per-role discipline files ────────────────────────────────────
-# Six files land per project: the slim interactive-session loader (CLAUDE.md)
-# plus the common-disciplines block (CLAUDE-COMMON.md) plus four per-role
-# blocks (CLAUDE-{ARCHITECT,IMPLEMENTER,REVIEWER,MEMORIAL}.md). The pipeline
-# assembles per-session prompts from CLAUDE-COMMON + the matching role file;
-# the slim CLAUDE.md is for interactive sessions only.
+# Seven files land per project: the slim interactive-session loader (CLAUDE.md)
+# plus the common-disciplines block (CLAUDE-COMMON.md) plus five per-role
+# blocks (CLAUDE-{ARCHITECT,IMPLEMENTER,REVIEWER,MEMORIAL,COORDINATOR}.md).
+# The pipeline assembles per-session prompts from CLAUDE-COMMON + the matching
+# role file; the slim CLAUDE.md is for interactive sessions only.
 for f in CLAUDE.md CLAUDE-COMMON.md CLAUDE-ARCHITECT.md CLAUDE-IMPLEMENTER.md \
-         CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md; do
+         CLAUDE-REVIEWER.md CLAUDE-MEMORIAL.md CLAUDE-COORDINATOR.md; do
   cp "$TOOLKIT_DIR/${f}.template" "$f"
   sed -i.bak "s/\[PROJECT NAME — replace this line\]/$PROJECT_NAME/" "$f"
   rm -f "${f}.bak"
@@ -153,6 +153,19 @@ chmod +x run-pipeline.sh
 if [[ -d "$TOOLKIT_DIR/scripts" ]]; then
   cp -r "$TOOLKIT_DIR/scripts" .
   chmod +x scripts/*.sh
+fi
+
+# ── Coordinator templates ─────────────────────────────────────────────────────
+# The Coordinator prompt tells the model to read templates/WAVE-PLAN-TEMPLATE.md
+# (plus the handoff / coordinator-memorial templates); ship them so coordinator
+# mode works on a scaffolded project. In the canonical layout templates/ sits
+# two levels above the toolkit dir.
+TEMPLATES_SRC="$TOOLKIT_DIR/../../templates"
+if [[ -d "$TEMPLATES_SRC" ]]; then
+  mkdir -p templates
+  cp "$TEMPLATES_SRC"/*.md templates/
+else
+  echo "  WARN: templates/ not found at $TEMPLATES_SRC; coordinator mode will lack WAVE-PLAN-TEMPLATE.md."
 fi
 
 # ── .gitignore ────────────────────────────────────────────────────────────────
