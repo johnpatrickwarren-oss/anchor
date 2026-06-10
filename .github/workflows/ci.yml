@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Maintained surface: fail the build if any local markdown link is broken.
+  link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check local markdown links (maintained surface + legacy)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # --offline: only verify file-path links; network links are out of scope
+          # for an archive-frozen repo and would make CI flaky.
+          # Q-NN-SPEC-TEMPLATE.md contains intentional `Q-[N]-...` placeholder links.
+          args: >-
+            --offline --no-progress --include-fragments
+            --exclude-path legacy/templates/Q-NN-SPEC-TEMPLATE.md
+            README.md DISCIPLINES.md PRD-INTERVIEW.md CONTRIBUTING.md SECURITY.md
+            design templates legacy
+          fail: true
+
+  # Legacy workspace tests: visibility only (the tree is archived/unmaintained),
+  # so failures are reported but do not block.
+  legacy-tests:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install workspace deps
+        working-directory: legacy
+        run: pnpm install --frozen-lockfile
+      - name: Run package test suites (@anchor/core, @anchor/cli, @anchor/runtime-agent-sdk)
+        working-directory: legacy
+        run: pnpm test
+      - name: Run shell smoke tests
+        working-directory: legacy/integrations/superpowers-claude-code
+        run: |
+          rc=0
+          for t in tests/scripts/*.test.sh; do
+            echo "=== $t ==="
+            bash "$t" || rc=1
+          done
+          exit $rc
+      - name: Run verification-harness gate test
+        working-directory: legacy/prototypes/verification-harness
+        run: node test-gate.mjs
