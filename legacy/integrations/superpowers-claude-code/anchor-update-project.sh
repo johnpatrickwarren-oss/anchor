@@ -24,7 +24,8 @@
 # Environment:
 #   ANCHOR_CANONICAL  Path to the integration directory containing
 #                     run-pipeline.sh. Defaults to
-#                     $HOME/anchor/integrations/superpowers-claude-code.
+#                     $HOME/anchor/legacy/integrations/superpowers-claude-code
+#                     (the toolkit was archived under legacy/ in 2026-06).
 #
 # Exit codes:
 #   0 = updated, already in sync, or user declined
@@ -34,7 +35,8 @@
 
 set -euo pipefail
 
-ANCHOR_CANONICAL="${ANCHOR_CANONICAL:-$HOME/anchor/integrations/superpowers-claude-code}"
+# Post-archive default; the toolkit moved under legacy/ in 2026-06.
+ANCHOR_CANONICAL="${ANCHOR_CANONICAL:-$HOME/anchor/legacy/integrations/superpowers-claude-code}"
 
 # ── Arg parsing ──────────────────────────────────────────────────────────────
 APPLY=false

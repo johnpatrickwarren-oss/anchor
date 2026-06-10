@@ -8,12 +8,20 @@
 # into ~/.claude/settings.local.json so common build commands (sed, awk,
 # grep, npm, git, etc.) run without prompting.
 #
-# The allow-list is intentionally NOT blanket-bypass. It excludes:
+# HONEST SAFETY FRAMING: this allow-list is narrower than a blanket
+# permission bypass, but it is NOT a security boundary. It still allows
+# Bash(node *), Bash(npx *), Bash(npm *), Bash(git *), Bash(find *),
+# Bash(sed *), Bash(awk *) — each of which reaches arbitrary command
+# execution (find -exec rm, npx <any-package>, node -e, git hooks/aliases,
+# npm scripts). The exclusions below reduce *accidental* damage from the
+# most common cases; they do not contain a confused or adversarial agent:
 #   - rm        (destructive — see it before approving)
 #   - sudo      (privilege escalation)
 #   - curl/wget (network reach)
 #   - brew/apt  (system package installation)
 #   - eval      (arbitrary code execution)
+# Treat this as a UX convenience for trusted, dedicated project directories
+# only — not as a sandbox.
 #
 # Anchor's HALT/ESCALATE discipline remains active under both states; this
 # toggle only changes the per-action UX, not the role-coordination safety
@@ -45,8 +53,8 @@ SETTINGS="${ANCHOR_SETTINGS:-$HOME/.claude/settings.local.json}"
 BACKUP="$SETTINGS.anchor-overnight.bak"
 
 # Curated allow-list. Add to this if your project needs more.
-# The set is intentionally moderate, not blanket — see header comments for
-# what's excluded and why.
+# Several entries (node/npx/npm/git/find/sed/awk) can reach arbitrary
+# execution — see the header's honest-safety-framing note.
 ANCHOR_RULES='[
   "Bash(sed *)",
   "Bash(awk *)",

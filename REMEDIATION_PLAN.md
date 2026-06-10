@@ -296,14 +296,14 @@ stubbed `sk-ant-test` in tests), no CI workflows to compromise, no malicious lin
 - [x] M8 — Make round-lock acquisition atomic (`mkdir` or `noclobber`).
 
 **Hygiene / docs (batchable):**
-- [ ] L3 — Fix `legacy/multi-cluster-parallelism/README.md:5` link prefix.
-- [ ] L4 — Replace `https://github.com/[link]` placeholder in the DeploySignal case study.
-- [ ] L5 — Correct the `design/multi-cluster-parallelism/` path in `legacy/README.md:31`.
-- [ ] L6 — Update `arch-gate` → `sprag` link and npm install command.
-- [ ] L7 — Remove/ship `scripts/refresh-models.ts` referenced by `models.json`.
-- [ ] L8 — Reword `anchor-overnight.sh` safety claims (allow-list still permits arbitrary execution).
+- [x] L3 — Fix `legacy/multi-cluster-parallelism/README.md:5` link prefix.
+- [x] L4 — Replace `https://github.com/[link]` placeholder in the DeploySignal case study.
+- [x] L5 — Correct the `design/multi-cluster-parallelism/` path in `legacy/README.md:31`.
+- [x] L6 — Update `arch-gate` → `sprag` link and npm install command.
+- [x] L7 — Remove/ship `scripts/refresh-models.ts` referenced by `models.json`. (Reference removed; noted as planned-but-never-shipped.)
+- [x] L8 — Reword `anchor-overnight.sh` safety claims (allow-list still permits arbitrary execution).
 - [x] L9 — "five deliverables" → six in the Memorial-Updater prompt.
-- [ ] L10 — Update stale `~/anchor/integrations/...` canonical defaults to the `legacy/` path.
+- [x] L10 — Update stale `~/anchor/integrations/...` canonical defaults to the `legacy/` path.
 
 ---
 

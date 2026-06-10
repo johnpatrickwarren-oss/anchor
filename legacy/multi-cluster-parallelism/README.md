@@ -2,7 +2,7 @@
 
 **Status: CONSOLIDATED.** The recommendations from these notes have
 been merged into the canonical Coordinator skill at
-[`../../skills/12-coordinator-role.md`](../../skills/12-coordinator-role.md)
+[`../skills/12-coordinator-role.md`](../skills/12-coordinator-role.md)
 under the new **"Shared-resource arbitration in multi-track mode"**
 section plus the **D5 dependency test** addition to Step 2. These
 notes are preserved as the design-decision audit trail; consult them

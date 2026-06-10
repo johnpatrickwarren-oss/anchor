@@ -28,7 +28,7 @@ something a strong model already does unprompted. See the *What used to be here*
 | `integrations/` | The `superpowers-claude-code` bash pipeline (`run-pipeline.sh`, role prompts). |
 | `case-studies/` | The DeploySignal coordination trail and other worked examples — the empirical record. |
 | `prototypes/` | The verification-harness prototype that motivated the pivot. |
-| `design/`, `design/multi-cluster-parallelism/` | The wave/DAG parallelism designs and the original arch-gate design that became sprag. |
+| `design/`, `multi-cluster-parallelism/` | The wave/DAG parallelism designs and the original arch-gate design that became sprag. |
 
 If you want the orchestrator as it was, it still runs from here — but the maintained path is
 sprag + `../DISCIPLINES.md`.
