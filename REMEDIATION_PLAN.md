@@ -320,3 +320,21 @@ stubbed `sk-ant-test` in tests), no CI workflows to compromise, no malicious lin
 | Verification-harness gate | `node test-gate.mjs` | **pass** (correctly rejects the saved bad oracle) |
 
 *(`node_modules` created for the run were removed afterward; working tree left clean.)*
+
+---
+
+## Remediation pass — 2026-06-10 (branch `fix/remediation-2026-06-10`)
+
+All 20 checklist items fixed; none deferred. Post-fix test sweep (Node v25.9.0, after
+`pnpm install --frozen-lockfile` in `legacy/`; `node_modules` removed afterward):
+
+| Suite | Result |
+|---|---|
+| `@anchor/core` | **134/134 pass** (M1 fixed) |
+| `@anchor/cli` | **42/42 pass** |
+| `@anchor/runtime-agent-sdk` | **34/34 pass** |
+| Shell smoke tests (5) | **5/5 pass** (M3 fixed; finalize-round test extended for H1/H2) |
+| Tier-router validator | **6/6 corpus cases, exit 0** (M2 fixed; corpus reconstructed) |
+| Impl-model-select validator | **5/5 pass** |
+| Verification-harness gate | **pass** (correctly rejects the saved bad oracle) |
+| Full-repo relative-link check | **clean** (only the intentional `Q-[N]` template placeholders remain) |
