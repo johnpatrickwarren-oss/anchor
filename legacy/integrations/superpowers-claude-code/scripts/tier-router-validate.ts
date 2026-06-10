@@ -1,11 +1,15 @@
-// scripts/tier-router-validate.ts — Replay router against Tessera validation corpus.
-// Usage: node scripts/tier-router-validate.js
+// scripts/tier-router-validate.ts — Replay router against the validation corpus.
+// Usage: node scripts/tier-router-validate.ts
 // Exit 0 iff all load-bearing safety constraints pass; exit 1 otherwise.
 
 import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// This package is "type": "module", so CJS __dirname does not exist; derive it.
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 interface CorpusEntry {
   round_id: string;
@@ -47,7 +51,7 @@ function runRouterOnContent(content: string): { tier: string; confidence: number
     writeFileSync(tmpFile, content);
     const result = spawnSync(
       'node',
-      [resolve(__dirname, 'tier-router.js'), '--directive', tmpFile, '--mode', 'heuristic'],
+      [resolve(__dirname, 'tier-router.ts'), '--directive', tmpFile, '--mode', 'heuristic'],
       { encoding: 'utf-8' },
     );
     if (result.status !== 0) return null;

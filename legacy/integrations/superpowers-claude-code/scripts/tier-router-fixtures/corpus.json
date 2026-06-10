@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "_comment": "Reconstructed minimal safety corpus. The original Tessera corpus referenced project-local git SHAs (git_show entries) and was never committed to this repo, leaving tier-router-validate.ts with nothing to load. Every entry here is an embedded fixture so the validator is hermetic and deterministic (heuristic mode only).",
+  "load_bearing_safety": {
+    "must_route_full": ["R45", "R61", "R72"],
+    "must_not_route_implementer_only": ["R49", "R55"]
+  },
+  "entries": [
+    {
+      "round_id": "R45",
+      "directive_source": { "type": "embedded_fixture", "path": "scripts/tier-router-fixtures/R45-escalate.md" },
+      "expected_constraint": { "must_route_full": true },
+      "label_rationale": "ESCALATE keyword is a full-tier anchor (rule 2)"
+    },
+    {
+      "round_id": "R61",
+      "directive_source": { "type": "embedded_fixture", "path": "scripts/tier-router-fixtures/R61-engine-path.md" },
+      "expected_constraint": { "must_route_full": true },
+      "label_rationale": "engine/ path token + A2 (new architectural pattern) are full-tier anchors (rule 2)"
+    },
+    {
+      "round_id": "R72",
+      "directive_source": { "type": "embedded_fixture", "path": "scripts/tier-router-fixtures/R72-ambiguous.md" },
+      "expected_constraint": { "must_route_full": true },
+      "label_rationale": "ambiguous directive must fall back to full — the rule-5 uncertainty escape hatch"
+    },
+    {
+      "round_id": "R49",
+      "directive_source": { "type": "embedded_fixture", "path": "scripts/tier-router-fixtures/R49-coordinator-wave.md" },
+      "expected_constraint": { "must_not_route_implementer_only": true },
+      "label_rationale": "Coordinator wave plan must never route implementer-only (rule 1)"
+    },
+    {
+      "round_id": "R55",
+      "directive_source": { "type": "embedded_fixture", "path": "scripts/tier-router-fixtures/R55-methodology-audit.md" },
+      "expected_constraint": { "must_not_route_implementer_only": true },
+      "label_rationale": "methodology / REINFORCEMENT consolidation routes audit, never implementer-only (rule 4)"
+    },
+    {
+      "round_id": "R52",
+      "directive_source": { "type": "embedded_fixture", "path": "scripts/tier-router-fixtures/R52-mechanical-doc.md" },
+      "expected_constraint": {},
+      "label_rationale": "mechanical doc-only change with one ALLOWED path routes implementer-only (rule 3) — unconstrained sanity case"
+    }
+  ]
+}
