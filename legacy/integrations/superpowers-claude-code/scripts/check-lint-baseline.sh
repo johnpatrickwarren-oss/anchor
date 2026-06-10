@@ -12,7 +12,8 @@
 #
 # Exit codes:
 #   0 = no regression (warnings ≤ baseline; errors = 0)
-#   1 = regression (new errors, or warnings increased above baseline)
+#   1 = regression (new errors, or warnings increased above baseline), or
+#       the linter could not run at all (this gate fails CLOSED)
 
 set -euo pipefail
 
@@ -25,9 +26,10 @@ if [[ ! -f "$BASELINE_FILE" ]]; then
   exit 1
 fi
 
-# ── Run lint, capture output (|| true prevents set -e from exiting on lint errors) ──
+# ── Run lint, capture output and exit code ───────────────────────────────────
 echo "--- Running lint ---"
-LINT_OUTPUT=$(cd "$PROJECT_ROOT" && npm run lint 2>&1 || true)
+LINT_EXIT=0
+LINT_OUTPUT=$(cd "$PROJECT_ROOT" && npm run lint 2>&1) || LINT_EXIT=$?
 
 # ── Parse error and warning counts ───────────────────────────────────────────
 # ESLint summary line format: "✖ N problems (E errors, W warnings)"
@@ -36,6 +38,18 @@ ERRORS=0
 WARNINGS=0
 
 SUMMARY_LINE=$(echo "$LINT_OUTPUT" | grep -E '[0-9]+ problem' || true)
+
+# ── Fail CLOSED when lint did not actually run ────────────────────────────────
+# A non-zero npm exit with no ESLint summary line means npm/eslint itself
+# failed (no package.json, no "lint" script, missing deps, npm absent) —
+# that is NOT "0 errors, 0 warnings". A regression gate that passes when
+# the linter never ran is no gate at all.
+if [[ "$LINT_EXIT" -ne 0 && -z "$SUMMARY_LINE" ]]; then
+  echo "ERROR: 'npm run lint' failed (exit $LINT_EXIT) without producing a lint summary." >&2
+  echo "       The linter did not run; this gate fails closed. Last output lines:" >&2
+  echo "$LINT_OUTPUT" | tail -10 >&2
+  exit 1
+fi
 
 if [[ -n "$SUMMARY_LINE" ]]; then
   ERRORS=$(echo "$SUMMARY_LINE" | grep -oE '[0-9]+ error' | head -1 | grep -oE '[0-9]+' || echo "0")
