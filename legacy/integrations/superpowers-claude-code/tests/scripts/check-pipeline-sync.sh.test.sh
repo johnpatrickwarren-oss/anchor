@@ -18,6 +18,10 @@ make_sync_canonical() {
   local dest="$1"
   mkdir -p "$dest/scripts"
   cp "$PROJECT_ROOT/run-pipeline.sh"                    "$dest/run-pipeline.sh"
+  # finalize-round.sh (root shim): only copy if it exists locally
+  if [[ -f "$PROJECT_ROOT/finalize-round.sh" ]]; then
+    cp "$PROJECT_ROOT/finalize-round.sh" "$dest/finalize-round.sh"
+  fi
   cp "$PROJECT_ROOT/scripts/finalize-round.sh"          "$dest/scripts/finalize-round.sh"
   cp "$PROJECT_ROOT/scripts/check-manifest.sh"          "$dest/scripts/check-manifest.sh"
   cp "$PROJECT_ROOT/scripts/check-lint-baseline.sh"     "$dest/scripts/check-lint-baseline.sh"
