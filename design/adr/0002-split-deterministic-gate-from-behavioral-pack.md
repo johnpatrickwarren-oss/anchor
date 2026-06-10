@@ -5,6 +5,11 @@
 - **Decision owner:** project owner
 - **Refines:** [`0001-pivot-to-verification-harness.md`](0001-pivot-to-verification-harness.md)
 
+> **Refinement note (2026-06-10):** This ADR was accepted when the behavioral pack had **five**
+> disciplines. Discipline 6 (durable project trail) was added later (PR #114), so
+> [`DISCIPLINES.md`](../../DISCIPLINES.md) now lists **six**. The "five" counts below are left as
+> written for the historical record; the split decision itself is unaffected.
+
 ---
 
 ## Context

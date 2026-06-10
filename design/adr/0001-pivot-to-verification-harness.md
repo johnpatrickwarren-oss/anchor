@@ -6,6 +6,12 @@
 - **Supersedes:** the multi-role build-orchestrator premise of `integrations/superpowers-claude-code/`
   (run-pipeline.sh + anchor-auto.sh) and the experimental `packages/cli` `anchor project` tool.
 
+> *Editorial note (2026-06-10): paths in this ADR are pre-archive. `integrations/superpowers-claude-code/`,
+> `packages/*`, `scripts/*`, and the design docs referenced below now live under
+> [`legacy/`](../../legacy/) (e.g.
+> `legacy/integrations/superpowers-claude-code/DESIGN-context-break-benchmark.md`). The ADR text
+> is otherwise left as written.*
+
 ---
 
 ## Context
@@ -36,8 +42,9 @@ inverted into overhead:
 verification* was — twice, the builder's own green suite hid real bugs that only an external oracle
 caught (`completion + green ≠ correct`). And we never found a task that breaks a single Opus
 session (the orchestration niche remains unvalidated). Continuing to hunt for that niche has two
-priors against it; see `design/.../DESIGN-context-break-benchmark.md` and
-`integrations/superpowers-claude-code/DESIGN-context-break-benchmark.md`.
+priors against it; see
+[`integrations/superpowers-claude-code/DESIGN-context-break-benchmark.md`](../../legacy/integrations/superpowers-claude-code/DESIGN-context-break-benchmark.md)
+*(linked at its post-archive `legacy/` location)*.
 
 There is no runtime coupling to unwind: the pipeline already runs headless with **no Superpowers
 MCP dependency** (disciplines are inlined as prose; no `--mcp-config`). The pivot is clean.
