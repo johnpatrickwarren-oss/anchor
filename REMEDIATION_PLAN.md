@@ -8,9 +8,10 @@
 
 Anchor's maintained surface (README, `DISCIPLINES.md`, `PRD-INTERVIEW.md`, `design/`,
 `templates/project-trail/`) is in good shape: internally consistent, well-cross-linked, no
-committed secrets, and no CI/workflow attack surface (there is no `.github/` at all). The issues
-found there are documentation-consistency items (a stale "five disciplines" count in an accepted
-ADR, stale pre-archive paths in ADR-0001).
+committed secrets. (This summary originally said "no CI/workflow attack surface — there is no
+`.github/` at all"; that predated L11's own remediation, which added the minimal docs-only
+workflow at `.github/workflows/ci.yml`.) The issues found there are documentation-consistency
+items (a stale "five disciplines" count in an accepted ADR, stale pre-archive paths in ADR-0001).
 
 The bulk of the findings are in `legacy/` — which the repo explicitly labels archived and
 unmaintained, but also claims "it still runs from here" (`legacy/README.md`). That claim is
