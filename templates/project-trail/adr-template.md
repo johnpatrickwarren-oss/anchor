@@ -1,5 +1,5 @@
 <!--
-APPEND-ONLY. Copy this to decisions/NNNN-short-title.md, one per real decision. Once an ADR is
+APPEND-ONLY. Copy this to design/adr/NNNN-short-title.md, one per real decision. Once an ADR is
 Accepted, never edit its Decision — if you change course, write a NEW ADR that supersedes it (and
 set this one's Status to "Superseded by NNNN"). The point is that a cold reader can see not just
 what the project does, but why, and why NOT the roads not taken.

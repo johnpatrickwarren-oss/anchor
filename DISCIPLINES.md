@@ -187,7 +187,7 @@ one-session throwaway can skip it.)
 - **Overwrite the "now."** One short `STATE.md` — what's done, what's in flight, what's next, open
   questions. Replace it at each session's close; it's a snapshot, never a history.
 - **Append the "forever."** One small ADR per real decision — the choice *and why, including why
-  not the alternatives* — in `decisions/`. Superseded by a new ADR, never edited in place. It grows
+  not the alternatives* — in `design/adr/`. Superseded by a new ADR, never edited in place. It grows
   at the rate of *decisions*, not time, so it never bloats from routine work.
 - Write both for someone who wasn't there, and keep a ruled-out / gotchas line in the relevant ADR
   so the next operator doesn't re-walk a dead end (the durable half of [V/Q](#4-vq-debugging)).

@@ -25,5 +25,5 @@ you after a two-month break). Keep it short; a stale STATE.md is worse than none
 
 ## Pointers
 - PRD / spec: <path>
-- Decisions: `decisions/` (one ADR per choice + why)
+- Decisions: `design/adr/` (one ADR per choice + why)
 - Architectural rules (deterministic): `invariants.json` + baseline (sprag)
