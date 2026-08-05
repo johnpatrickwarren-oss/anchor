@@ -113,10 +113,16 @@ this by my own observation, or am I inheriting it from prior testimony?"* Inheri
 is not verification; run the command, open the file, check the state. Don't forward a premise you
 haven't verified.
 
-**Why it beats the default:** The model's default on a spec/reality mismatch is to plow ahead and
-rationalize — absorb the conflict, produce something that compiles, and bury the contradiction.
-That ships wrong work with a clean status. "Halt and ask a *bounded* question" — option A does X
-(consequence Y), option B does Z (consequence W), which? — is the override.
+**Why it beats the default:** *Re-scoped 2026-08-04 after the first recorded half-life run (ADR
+0003; `knowledge/methodology/half-life-ritual-2026-08-04`).* The bare default now **verifies the
+premise, notices the mismatch, and discloses it precisely — but only after acting on its own
+reconciliation**. An earlier revision of this entry said the default "buries the contradiction";
+that clause is measured false and is retired. What the default still does not do is **halt before
+building on the false premise**: it edits first and flags after, which ships a judgment call —
+whose spec-vs-reality resolution to implement — as a fait accompli. "Halt and ask a *bounded*
+question" — option A does X (consequence Y), option B does Z (consequence W), which? — is the
+surviving override, and it is an incentive bet (who decides), not a capability bet (can it
+notice), so a stronger model does not absorb it.
 
 **How to apply:** Grep and open before trusting any claim about existing code. When you hit a
 genuine contradiction, write the two-option question and escalate it rather than picking silently.
