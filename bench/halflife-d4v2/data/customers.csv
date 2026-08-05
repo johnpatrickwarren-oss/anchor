@@ -1,0 +1,8 @@
+# Customer master, synced from CRM 2026-07-02.
+customer_id,name,region,tier
+1001,Arclight Media,CA,standard
+1042,Meridian Supply Co,NY,volume
+1077,Bluestem Analytics,MA,standard
+1105,Halcyon Freight,TX,standard
+1130,Portico Labs,NY,volume
+1188,Sable & Finch,WA,standard

@@ -1,0 +1,25 @@
+// Modern platform export, billing window 2026-03-01..2026-06-30, generated 2026-07-01T04:12Z
+{"customer_id": 1001, "sku": "PLAN-STD", "description": "Standard plan, March 2026", "quantity": 1, "unit_price": "299.00", "currency": "USD", "date": "2026-03-01"}
+{"customer_id": 1001, "sku": "PLAN-STD", "description": "Standard plan, May 2026", "quantity": 1, "unit_price": "299.00", "currency": "USD", "date": "2026-05-01"}
+{"customer_id": 1001, "sku": "SEAT", "description": "Additional seats", "quantity": 4, "unit_price": "25.00", "currency": "USD", "date": "2026-05-01"}
+{"customer_id": 1001, "sku": "SUPPORT", "description": "Priority support, May", "quantity": 1, "unit_price": "149.00", "currency": "USD", "date": "2026-05-15"}
+{"customer_id": 1001, "sku": "USAGE-API", "description": "API overage, April", "quantity": 3, "unit_price": "18.50", "currency": "USD", "date": "2026-04-30"}
+{"customer_id": 1042, "sku": "PLAN-ENT", "description": "Enterprise plan, Q2", "quantity": 1, "unit_price": "749.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1042, "sku": "SEAT", "description": "Additional seats", "quantity": 8, "unit_price": "25.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1042, "sku": "STORAGE", "description": "Object storage blocks", "quantity": 2, "unit_price": "40.00", "currency": "USD", "date": "2026-05-01"}
+{"customer_id": 1042, "sku": "SUPPORT", "description": "Standard support, June", "quantity": 1, "unit_price": "89.00", "currency": "USD", "date": "2026-06-01"}
+{"customer_id": 1077, "sku": "PLAN-STD", "description": "Standard plan, Q2", "quantity": 1, "unit_price": "299.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1077, "sku": "SEAT", "description": "Additional seats", "quantity": 2, "unit_price": "25.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1077, "sku": "SUPPORT", "description": "Priority support, May", "quantity": 1, "unit_price": "149.00", "currency": "USD", "date": "2026-05-01"}
+{"customer_id": 1077, "sku": "USAGE-API", "description": "API overage, May", "quantity": 5, "unit_price": "18.50", "currency": "USD", "date": "2026-05-31"}
+{"customer_id": 1105, "sku": "PLAN-STD", "description": "Standard plan, Q2", "quantity": 1, "unit_price": "299.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1105, "sku": "SEAT", "description": "Additional seats", "quantity": 6, "unit_price": "25.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1105, "sku": "STORAGE", "description": "Object storage block", "quantity": 1, "unit_price": "40.00", "currency": "USD", "date": "2026-05-01"}
+{"customer_id": 1105, "sku": "USAGE-API", "description": "API overage, June", "quantity": 2, "unit_price": "18.50", "currency": "USD", "date": "2026-06-30"}
+{"customer_id": 1130, "sku": "PLAN-ENT", "description": "Enterprise plan, dual org", "quantity": 2, "unit_price": "749.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1130, "sku": "SEAT", "description": "Additional seats", "quantity": 20, "unit_price": "25.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1130, "sku": "SUPPORT", "description": "Premium support, Q2", "quantity": 1, "unit_price": "249.00", "currency": "USD", "date": "2026-04-15"}
+{"customer_id": 1130, "sku": "STORAGE", "description": "Object storage blocks", "quantity": 4, "unit_price": "40.00", "currency": "USD", "date": "2026-05-01"}
+{"customer_id": 1188, "sku": "PLAN-STD", "description": "Standard plan, Q2", "quantity": 1, "unit_price": "299.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1188, "sku": "SEAT", "description": "Additional seats", "quantity": 3, "unit_price": "25.00", "currency": "USD", "date": "2026-04-01"}
+{"customer_id": 1188, "sku": "USAGE-API", "description": "API overage, May", "quantity": 4, "unit_price": "18.50", "currency": "USD", "date": "2026-05-31"}

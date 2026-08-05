@@ -1,0 +1,9 @@
+# Legacy AS/400 charge export, spool re-export 2026-07-01. UNIT_AMT in minor units.
+CUST_NO,ITEM_CD,ITEM_DESC,QTY,UNIT_AMT,SVC_DT
+1042,FRT-204,Freight surcharge zone 4,1,1899,04/18/2026
+1042,FRT-118,Pallet handling,2,1275,05/09/2026
+1077,WHS-031,Warehouse pick fee,1,1450,04/22/2026
+1077,WHS-090,Carton storage,3,620,06/10/2026
+1130,RTE-501,Route delivery stop,1,3125,04/30/2026
+1130,RTE-502,Route delivery stop rural,2,2210,05/21/2026
+1130,RTE-377,Fuel adjustment,1,1480,06/17/2026
