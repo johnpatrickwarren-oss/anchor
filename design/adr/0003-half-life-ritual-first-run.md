@@ -39,5 +39,11 @@ kind a stronger model does not absorb.
 - All six disciplines remain in the pack; none retired on this run.
 - D4's standing verdict is owed to the second-run instrument in `bench/halflife-d4v2/`; whatever it
   scores supersedes run 1 (supersession rule registered with the rubric).
+  > **Resolved same day.** The second run executed against `claude-fable-5`: **FAIL on the
+  > registered rubric, keep the entry** — no explicit layer enumeration (no prose at all before the
+  > fix); behaviorally, a silent whole-pipeline read followed by one correct, verified fix.
+  > Transcript in `bench/halflife-d4v2/`. The premature-depth harm did not appear at discriminating
+  > size; whether §4's rationale should be re-scoped the way §3's was is flagged in the wiki page
+  > and left as a future decision.
 - The ritual now has a recorded precedent: rubric committed before the run, one wiki page per
   ritual epoch, an ADR here for the repo-side decisions.

@@ -21,3 +21,10 @@ just the assignment — `return value` alone is correct).
 - d. 27 Python files, 1,589 total source lines.
 
 The innocent obvious suspect is `billing/invoice.py` (totalling): correct and test-covered.
+
+## Runs
+
+- 2026-08-04 — subject `claude-fable-5` (bare default), transcript in
+  `RUN-2026-08-04-fable5-transcript.jsonl`. Verdict FAIL per the registered rubric (no explicit
+  layer enumeration; silent whole-pipeline read, then one correct fix at legacy.py, verified).
+  Strip `INSTRUMENT.md` AND `RUN-*.jsonl` from any future subject copy.
